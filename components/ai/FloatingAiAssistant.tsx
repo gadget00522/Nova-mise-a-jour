@@ -6,7 +6,7 @@
  */
 import { GOLD } from '../../ui/nova';
 import { useLocked } from '../../lib/lockState';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,9 +16,10 @@ import { useBrowserStore } from '../../lib/browserStore';
 import { AiChatModal } from './AiChatModal';
 import { Pressable } from '../../ui/kit';
 import { Icon } from '../../ui/icon';
-import { useTheme } from '../../ui/theme';
+import { useTheme, radii } from '../../ui/theme';
 import { radius } from '../../ui/tokens';
 import { useT } from '../../lib/settingsStore';
+import { useShallow } from 'zustand/react/shallow';
 
 const TAB_PATHS = ['/', '/home', '/market', '/earn'];
 const BROWSER = '/browser';
@@ -33,7 +34,7 @@ export function FloatingAiAssistant() {
   const closeChat = useAiStore((s) => s.closeChat);
   const pathname = usePathname();
   const { totalUsd, tokensSummary, pnl24h, pnl24hPct, topGainer, topLoser } = usePortfolio();
-  const { currentUrl, currentTitle } = useBrowserStore();
+  const { currentUrl, currentTitle } = useBrowserStore(useShallow((s) => ({ currentUrl: s.currentUrl, currentTitle: s.currentTitle })));
   const [collapsed, setCollapsed] = useState(false);
   const locked = useLocked();
 
@@ -69,7 +70,7 @@ export function FloatingAiAssistant() {
             accessibilityLabel={collapsed ? t('aiFloatingShow') : t('aiFloatingOpen')}
             style={
               collapsed
-                ? { width: 28, height: 44, borderTopLeftRadius: 22, borderBottomLeftRadius: 22, backgroundColor: colors.surface1, borderWidth: 1, borderRightWidth: 0, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }
+                ? { width: 28, height: 44, borderTopLeftRadius: radii.lg, borderBottomLeftRadius: radii.lg, backgroundColor: colors.surface1, borderWidth: 1, borderRightWidth: 0, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }
                 : { width: 52, height: 52, borderRadius: radius.round, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }
             }
           >

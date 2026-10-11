@@ -7,11 +7,11 @@
  * qu'elle fait avant de proposer de signer, et refuser tout ce qui ne tient pas
  * debout — payeur qui n'est pas nous, signature d'un tiers exigée.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, Button, Surface, ListRow, IconButton, Skeleton, EmptyState } from '../ui/kit';
+import { Text, Button, ListRow, IconButton, Skeleton, EmptyState, Card } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { space, SCREEN_MARGIN } from '../ui/tokens';
 import { ConfirmUnlock } from '../ui/ConfirmUnlock';
@@ -31,7 +31,7 @@ import {
   shortAddress,
   type TxRequestIdentity,
   type SolanaTxDescription,
-  type TxRequestRefusal,
+  type TxRequestRefusal
 } from '../src';
 
 export default function SolanaRequestScreen() {
@@ -80,12 +80,15 @@ export default function SolanaRequestScreen() {
     [t],
   );
 
+  const messageFor = useEffectEvent((reason?: TxRequestRefusal | 'UNAVAILABLE') =>
+    reason === 'UNAVAILABLE' ? t('solReqUnavailable') : refusalText(reason),
+  );
   useEffect(() => {
     let alive = true;
     void (async () => {
       const me = solAddress;
       if (!url || !me) {
-        setError(t('solReqUnavailable'));
+        setError(messageFor('UNAVAILABLE'));
         setLoading(false);
         return;
       }
@@ -99,7 +102,7 @@ export default function SolanaRequestScreen() {
       const payload = await fetchTxRequestPayload(url, me);
       if (!alive) return;
       if (!payload) {
-        setError(t('solReqFailed'));
+        setError(messageFor());
         setLoading(false);
         return;
       }
@@ -114,7 +117,7 @@ export default function SolanaRequestScreen() {
          * refus en français dans le domaine : ils sortaient en français quelle
          * que soit la langue choisie. Même faute que dans le magasin de Pay.
          */
-        setError(refusalText(check.reason));
+        setError(messageFor(check.reason));
         setLoading(false);
         return;
       }
@@ -127,7 +130,6 @@ export default function SolanaRequestScreen() {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, solAddress]);
 
   return (
@@ -151,32 +153,32 @@ export default function SolanaRequestScreen() {
         contentContainerStyle={{ padding: SCREEN_MARGIN, gap: space[4], paddingBottom: insets.bottom + space[6] }}
       >
         {loading ? (
-          <Surface>
+          <Card>
             <View style={{ gap: space[2] }}>
               <Skeleton width="55%" />
               <Skeleton width="80%" height={12} />
             </View>
-          </Surface>
+          </Card>
         ) : null}
 
         {error ? (
-          <Surface>
+          <Card>
             <EmptyState icon="warning" title={t('solReqRefused')} body={error} actionLabel={t('back')} onAction={close} />
-          </Surface>
+          </Card>
         ) : null}
 
         {!loading && !error ? (
           <>
-            <Surface>
+            <Card>
               <View style={{ gap: space[2] }}>
                 <Text variant="caption" tone="secondary">{t('payMerchant')}</Text>
                 <Text variant="title2">{identity?.label ?? t('solReqUnknownMerchant')}</Text>
                 {message ? <Text variant="body" tone="secondary">{message}</Text> : null}
               </View>
-            </Surface>
+            </Card>
 
             {/* CE QUE LA TRANSACTION FAIT, décodé par nous et non annoncé par le serveur. */}
-            <Surface padded={false}>
+            <Card padded={false}>
               <ListRow title={t('solReqAction')} subtitle={description?.action ?? '—'} />
               <ListRow
                 title={t('solReqPrograms')}
@@ -184,7 +186,7 @@ export default function SolanaRequestScreen() {
               />
               <ListRow title={t('solReqInstructions')} subtitle={String(description?.instructions ?? 0)} />
               <ListRow title={t('solReqFeePayer')} subtitle={shortAddress(description?.feePayer ?? '')} />
-            </Surface>
+            </Card>
 
             {/*
               Programmes non reconnus : on le DIT au lieu d'afficher une liste

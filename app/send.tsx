@@ -15,7 +15,7 @@ import { sameAddress } from '../lib/txAuditProbe';
 import { holdingLabel } from '../lib/holdingLabel';
 import { SendResult } from '../ui/SendResult';
 import { RecipientFacts } from '../ui/RecipientFacts';
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useState, useRef } from 'react';
 import { View, ScrollView } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { holdingIcon } from '../ui/kit/useFallbackLogo';
@@ -26,13 +26,13 @@ import { friendlyTxError } from '../lib/txError';
 const PRECHECK_BLOCKING = new Set(['SOL_RENT_SENDER', 'SOL_RENT_RECIPIENT', 'INSUFFICIENT_FUNDS', 'AMOUNT_TOO_SMALL', 'INSUFFICIENT_GAS', 'MEMO_REQUIRED', 'INVALID_ADDRESS', 'INVALID_AMOUNT', 'PREVIOUS_TX_PENDING']);
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { LogoImage, Text, Button, IconButton, Surface, Divider, ListRow, TokenRow, AddressGlyph, AmountKeypad, StepBar, HoldRing, TxSteps, Chip, Skeleton, Input, EmptyState, SegmentedControl, type TxStage, Pressable as KPressable } from '../ui/kit';
+import { LogoImage, Text, Button, IconButton, Divider, ListRow, TokenRow, AddressGlyph, AmountKeypad, StepBar, HoldRing, TxSteps, Chip, Skeleton, Input, EmptyState, SegmentedControl, type TxStage, Pressable as KPressable, Card, Checkbox } from '../ui/kit';
 import { Icon } from '../ui/icon';
 import { ConfirmUnlock } from '../ui/ConfirmUnlock';
 import { ContactPicker } from '../ui/ContactPicker';
 import { FadeInUp } from '../ui/FadeInUp';
 import { useTheme } from '../ui/theme';
-import { space, SCREEN_MARGIN, radius } from '../ui/tokens';
+import { space, SCREEN_MARGIN, radius, radii } from '../ui/tokens';
 import { useWallet, type Unlock } from '../lib/walletStore';
 import { useSettings, useT, fiatSymbol } from '../lib/settingsStore';
 import { useRecentRecipients, type RecipientFamily } from '../lib/recentRecipientsStore';
@@ -41,20 +41,70 @@ import { usePortfolioStore, splitHoldings, useTestnetBalances, testnetHoldings, 
 import { notifyAndLog } from '../lib/notificationCenter';
 import { technicalLogger } from '../lib/technicalLogger';
 import { haptic } from '../lib/haptics';
-import { toast } from '../lib/toast';
 import {
-  getAdapter, hasChain, isWalletError, isValidEvmAddress, isValidSolanaAddress, isWalletAddress, isValidBtcAddress, parseAmount, formatTokenAmount, formatInputAmount, trimDecimalZeros,
-  formatAmount, formatFiat, getCustomTokens, looksLikeEnsName, resolveEnsName, detectPoisoning, groupAddress, shortAddress,
-  estimateGasReserve, getPrices, getTokenPrices, chainIconUrl, EvmChainAdapter, SolanaChainAdapter, TonAdapterV2, JETTON_TRANSFER_TON, normalizeTonDomain,
-  findAdapterV2, getAdapterV2, isValidTonAddress, transferFeeFor, amountAfterTransferFee,
-  type FeeOptions, type FeeSpeed, type FeeQuotes, type TransferFeeConfig,
-  simulateSendTransaction, type SimulationResult,
+  getAdapter,
+  hasChain,
+  isWalletError,
+  isValidEvmAddress,
+  isValidSolanaAddress,
+  isWalletAddress,
+  isValidBtcAddress,
+  parseAmount,
+  formatTokenAmount,
+  formatInputAmount,
+  trimDecimalZeros,
+  formatAmount,
+  formatFiat,
+  getCustomTokens,
+  looksLikeEnsName,
+  resolveEnsName,
+  detectPoisoning,
+  groupAddress,
+  shortAddress,
+  estimateGasReserve,
+  getPrices,
+  getTokenPrices,
+  chainIconUrl,
+  EvmChainAdapter,
+  SolanaChainAdapter,
+  TonAdapterV2,
+  JETTON_TRANSFER_TON,
+  normalizeTonDomain,
+  findAdapterV2,
+  getAdapterV2,
+  isValidTonAddress,
+  transferFeeFor,
+  amountAfterTransferFee,
+  type FeeOptions,
+  type FeeSpeed,
+  type FeeQuotes,
+  type TransferFeeConfig,
+  simulateSendTransaction,
+  type SimulationResult
 } from '../src';
 import { addressForChain } from '../lib/accountAddress';
 import { useHistoryStore } from '../lib/historyStore';
 import { AntiDrainerBanner } from '../src/components/security/AntiDrainerBanner';
+import { useShallow } from 'zustand/react/shallow';
 
 type Step = 0 | 1 | 2 | 3 | 4;
+
+const cleanAddressInput = (str: string): string | null => {
+  const trimmed = (str ?? '').trim();
+  if (
+    !trimmed ||
+    trimmed.includes('Exception') ||
+    trimmed.includes('Error') ||
+    trimmed.includes('java.') ||
+    trimmed.includes('at com.') ||
+    trimmed.includes('\n') ||
+    trimmed.includes('\r') ||
+    trimmed.length > 120
+  ) {
+    return null;
+  }
+  return trimmed;
+};
 
 function SendInner() {
   const t = useT();
@@ -63,11 +113,11 @@ function SendInner() {
   const fiat = useSettings((s) => s.fiat);
   const showTestnets = useSettings((s) => s.showTestnets);
   const sym = fiatSymbol(fiat);
-  const wallet = useWallet();
+  const wallet = useWallet(useShallow((s) => ({ account: s.account, activeChain: s.activeChain, accounts: s.accounts, activeAccountIndex: s.activeAccountIndex, sendJetton: s.sendJetton, sendSolToken: s.sendSolToken, sendToken: s.sendToken, signAndSend: s.signAndSend })));
   const { account, activeChain, accounts } = wallet;
   const params = useLocalSearchParams<{ to?: string; amount?: string; contract?: string; mint?: string; jetton?: string; exp?: string; symbol?: string; decimals?: string; chain?: string; references?: string; memo?: string; payee?: string; note?: string }>();
   const setActiveChain = useWallet((s) => s.setActiveChain);
-  const pf = usePortfolioStore();
+  const pf = usePortfolioStore(useShallow((s) => ({ holdings: s.holdings, hydrate: s.hydrate, invalidate: s.invalidate, loading: s.loading, refresh: s.refresh })));
 
   // « Quoi envoyer » (étape 0) : depuis l'accueil, on choisit le TOKEN et la chaîne
   // en découle. Depuis la page d'un token (params), on saute cette étape.
@@ -127,23 +177,6 @@ function SendInner() {
   const decimals = token ? token.decimals : chain.nativeDecimals;
   const isNativeSend = !token;
 
-  const cleanAddressInput = (str: string): string | null => {
-    const trimmed = (str ?? '').trim();
-    if (
-      !trimmed ||
-      trimmed.includes('Exception') ||
-      trimmed.includes('Error') ||
-      trimmed.includes('java.') ||
-      trimmed.includes('at com.') ||
-      trimmed.includes('\n') ||
-      trimmed.includes('\r') ||
-      trimmed.length > 120
-    ) {
-      return null;
-    }
-    return trimmed;
-  };
-
   const [to, setTo] = useState(cleanAddressInput(String(params.to ?? '')) ?? '');
   const [amount, setAmount] = useState(String(params.amount ?? ''));
   // Retour du scanner / des contacts : les params changent, on les applique.
@@ -157,7 +190,7 @@ function SendInner() {
     if (params.amount) setAmount(String(params.amount));
   }, [params.amount]);
   // Étape 0 : le portefeuille agrégé doit être chargé (cache d'abord).
-  useEffect(() => {
+  const loadPortfolio = useEffectEvent(() => {
     const st = accounts.find((a) => a.index === wallet.activeAccountIndex) ?? accounts[0];
     if (!st) return;
     const a = { evmAddress: st.evmAddress, solAddress: st.solAddress, btcAddress: st.btcAddress, tonPublicKey: st.tonPublicKey, tonVersion: st.tonVersion };
@@ -165,7 +198,9 @@ function SendInner() {
     // les réseaux de test se lisent à part et s'ajoutent à la liste ci-dessous.
     pf.hydrate(a, fiat).then((current) => { if (current) void pf.refresh(a, fiat, { force: true }); });
     if (showTestnets) void useTestnetBalances.getState().refresh(a, { force: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    loadPortfolio();
   }, [wallet.activeAccountIndex, fiat, showTestnets]);
   const testnetBals = useTestnetBalances((s) => s.balances);
   const sendable = useMemo(
@@ -275,7 +310,7 @@ function SendInner() {
   const [reserve, setReserve] = useState<bigint>(0n);
   /** Jetton TON : coût RÉEL (émulé), distinct du TON joint au message qu'il faut avoir. */
   const [jettonFee, setJettonFee] = useState<bigint | null>(null);
-  useEffect(() => {
+  const loadSendCosts = useEffectEvent((isAlive: () => boolean) => {
     setBalance(picked?.raw ?? null);
     setPrice(picked?.price ?? 0);
     setNativeBal(picked?.kind === 'native' ? picked.raw : null);
@@ -286,7 +321,6 @@ function SendInner() {
     setAmountError(null);
 
     if (!senderAddress) return;
-    let alive = true;
     const a = getAdapter(targetChainId);
     (async () => {
       const [nat, res, np] = await Promise.all([
@@ -294,7 +328,7 @@ function SendInner() {
         estimateGasReserve(a).then((r) => r.raw).catch(() => 0n),
         chain.coingeckoId ? getPrices([chain.coingeckoId], fiat).then((p) => p[chain.coingeckoId!]?.price ?? 0).catch(() => 0) : Promise.resolve(0),
       ]);
-      if (!alive) return;
+      if (!isAlive()) return;
       setNativeBal(nat);
       setReserve(res);
       setNativePrice(np);
@@ -304,19 +338,19 @@ function SendInner() {
       } else if (token.kind === 'erc20' && family === 'evm') {
         const [t] = await getCustomTokens(chain, senderAddress, [token.contract]).catch(() => [] as { raw: bigint }[]);
         const tp = chain.coingeckoPlatform ? await getTokenPrices(chain.coingeckoPlatform, [token.contract], fiat).catch(() => ({} as Record<string, number>)) : {};
-        if (!alive) return;
+        if (!isAlive()) return;
         setBalance(t?.raw ?? 0n);
         setPrice(tp[token.contract.toLowerCase()] ?? 0);
       } else if (token.kind === 'spl' && a instanceof SolanaChainAdapter) {
         const list = await a.getSplTokens(senderAddress).catch(() => []);
         const tp = await getTokenPrices('solana', [token.mint], fiat).catch(() => ({} as Record<string, number>));
-        if (!alive) return;
+        if (!isAlive()) return;
         setBalance(list.find((x) => x.mint === token.mint)?.raw ?? 0n);
         setPrice(tp[token.mint.toLowerCase()] ?? 0);
       } else if (token.kind === 'jetton') {
         const ton = findAdapterV2(targetChainId);
         const list = ton instanceof TonAdapterV2 ? await ton.jettons(senderAddress, fiat).catch(() => []) : [];
-        if (!alive) return;
+        if (!isAlive()) return;
         const held = list.find((x) => x.master === token.master.toLowerCase());
         setBalance(held?.raw ?? 0n);
         setPrice(held?.verification === 'whitelist' ? held.price : 0);
@@ -325,7 +359,7 @@ function SendInner() {
         // Coût réel, émulé sur un envoi à soi-même : c'est lui qu'on affiche.
         if (ton instanceof TonAdapterV2 && held && held.raw > 0n) {
           ton.prepareSend(senderAddress, { to: senderAddress, amount: 1n, token: { id: held.master, symbol: held.symbol, decimals: held.decimals } })
-            .then((d) => alive && setJettonFee(d.fee))
+            .then((d) => isAlive() && setJettonFee(d.fee))
             .catch(() => {});
         }
       }
@@ -346,7 +380,7 @@ function SendInner() {
           : null;
         v2.quoteFees(senderAddress, { to: recipientOk ? recipient : senderAddress, amount: 1n, token: ref })
           .then((q: FeeQuotes) => {
-            if (!alive) return;
+            if (!isAlive()) return;
             // `FeeOptions` attend la forme EVM : `costWei` porte le coût, les
             // deux autres champs ne servent qu'au palier EVM, qui les relit.
             const tier = (t: (typeof q)['slow']) => {
@@ -365,15 +399,18 @@ function SendInner() {
 
       // Frais PRÉLEVÉS PAR LE JETON (Token-2022) : propre à Solana.
       if (a instanceof SolanaChainAdapter && token?.kind === 'spl') {
-        a.getTransferFeeConfig(token.mint).then((c) => alive && setTokenFee(c)).catch(() => {});
+        a.getTransferFeeConfig(token.mint).then((c) => isAlive() && setTokenFee(c)).catch(() => {});
       } else {
         setTokenFee(null);
       }
     })();
+  });
+  useEffect(() => {
+    let alive = true;
+    loadSendCosts(() => alive);
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [senderAddress, targetChainId, fiat, params.contract, params.mint, params.jetton, picked?.id]);
 
   // Frais en natif (unité brute) : palier EVM choisi, sinon réserve dynamique.
@@ -584,9 +621,8 @@ function SendInner() {
   };
 
   // Suivi : attente de confirmation (EVM 1 bloc ; Solana poll ; BTC = envoyée).
-  useEffect(() => {
+  const trackConfirmation = useEffectEvent((isAlive: () => boolean) => {
     if (step !== 4 || !hash) return;
-    let alive = true;
     const a = getAdapter(activeChain);
     (async () => {
       try {
@@ -594,7 +630,7 @@ function SendInner() {
           setStage('included');
           await a.waitForTx(hash);
         } else if (a instanceof SolanaChainAdapter) {
-          for (let i = 0; i < 40 && alive; i++) {
+          for (let i = 0; i < 40 && isAlive(); i++) {
             await new Promise((r) => setTimeout(r, 2000));
             const st = await a.rpc<{ value?: ({ err?: unknown; confirmationStatus?: string } | null)[] }>('getSignatureStatuses', [[hash]]).catch(() => null);
             const s = st?.value?.[0];
@@ -613,7 +649,7 @@ function SendInner() {
         } else {
           return; // Bitcoin : pas de suivi in-app (v1)
         }
-        if (alive) {
+        if (isAlive()) {
           setStage('confirmed');
           technicalLogger.logTx('step_4_confirmed', { txHash: hash, chain: chain.name });
           haptic.success();
@@ -621,13 +657,16 @@ function SendInner() {
         }
       } catch (err) {
         technicalLogger.logTx('step_4_confirmation_failed', { txHash: hash, error: String(err), chain: chain.name }, true);
-        if (alive) setStage('failed');
+        if (isAlive()) setStage('failed');
       }
     })();
+  });
+  useEffect(() => {
+    let alive = true;
+    trackConfirmation(() => alive);
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, hash]);
 
   /** Destinataire refusé par la liste blanche : on propose de l'y ajouter (utilisable après 24 h). */
@@ -759,6 +798,9 @@ function SendInner() {
    * l'information utile.
    */
   const autoAdvanced = useRef(false);
+  const advance = useEffectEvent(() => {
+    void goStep3();
+  });
   useEffect(() => {
     if (!isPrefilledPayment || autoAdvanced.current) return;
     if (step !== 2 || balance == null || amountRaw <= 0n) return;
@@ -766,8 +808,7 @@ function SendInner() {
     // avant leur chargement produirait une erreur qui disparaîtrait ensuite.
     if (isNativeSend && !feeOptions) return;
     autoAdvanced.current = true;
-    void goStep3();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    advance();
   }, [isPrefilledPayment, step, balance, amountRaw, isNativeSend, feeOptions]);
 
   const paste = async () => {
@@ -806,7 +847,7 @@ function SendInner() {
             {/* Le titre rétrécit (une ligne) : long (« Vérifie avant d'envoyer »), il poussait la pastille du réseau sur le compteur d'étapes. */}
             <Text variant="title2" numberOfLines={1} style={{ flexShrink: 1 }}>{step === 0 ? t("aiSend") : step === 4 ? t("headerTracking") : step === 3 ? t("verifyBeforeSendTitle") : (fill(t('headerSendToken'), { symbol: symbol }) + (chain.testnet ? ` (${chain.name})` : ''))}</Text>
             {step > 0 && chainIconUrl(chain.id) ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 24, borderRadius: 12, backgroundColor: colors.surface2, flexShrink: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 24, borderRadius: radii.full, backgroundColor: colors.surface2, flexShrink: 0 }}>
                 <LogoImage uri={chainIconUrl(chain.id)!} size={14} />
                 <Text variant="micro" tone="secondary">{chain.name}</Text>
               </View>
@@ -834,11 +875,11 @@ function SendInner() {
               <Input placeholder="usdc, arbitrum…" value={search} onChangeText={setSearch} autoCapitalize="none" />
               {showTestnets ? <SegmentedControl items={[{ key: 'mainnet', label: t("tabMainnet") }, { key: 'testnet', label: t("tabTestnet") }]} value={environment} onChange={setEnvironment} /> : null}
               {pf.loading && pf.holdings.length === 0 ? (
-                <Surface padded={false}>{[0, 1, 2].map((i) => <View key={i} style={{ height: 64, paddingHorizontal: space[4], justifyContent: 'center', gap: space[2] }}><Skeleton width="55%" /><Skeleton width="30%" height={12} /></View>)}</Surface>
+                <Card padded={false}>{[0, 1, 2].map((i) => <View key={i} style={{ height: 64, paddingHorizontal: space[4], justifyContent: 'center', gap: space[2] }}><Skeleton width="55%" /><Skeleton width="30%" height={12} /></View>)}</Card>
               ) : list.length === 0 ? (
-                <Surface><EmptyState icon="send" title={q ? t("emptySearchTitle") : t("emptySendTitle")} body={q ? undefined : t("emptySendBody")} actionLabel={q ? undefined : t("receive")} onAction={q ? undefined : () => router.replace('/receive')} /></Surface>
+                <Card><EmptyState icon="send" title={q ? t("emptySearchTitle") : t("emptySendTitle")} body={q ? undefined : t("emptySendBody")} actionLabel={q ? undefined : t("receive")} onAction={q ? undefined : () => router.replace('/receive')} /></Card>
               ) : (
-                <Surface padded={false}>
+                <Card padded={false}>
                   {list.map((h, i) => (
                     <React.Fragment key={h.id}>
                       <TokenRow
@@ -865,7 +906,7 @@ function SendInner() {
                       {i < list.length - 1 ? <Divider inset={68} /> : null}
                     </React.Fragment>
                   ))}
-                </Surface>
+                </Card>
               )}
             </>
           );
@@ -881,7 +922,7 @@ function SendInner() {
         {/* ── 1. Destinataire ── */}
         {step === 1 ? (
           <FadeInUp style={{ flex: 1, gap: space[5] }}>
-            <Surface level={2} style={{ flexDirection: 'row', alignItems: 'center', gap: space[3], padding: space[3] }}>
+            <Card level={2} style={{ flexDirection: 'row', alignItems: 'center', gap: space[3], padding: space[3] }}>
               {recipientOk ? <AddressGlyph address={recipient} size={40} /> : <View style={{ width: 40, height: 40, borderRadius: radius.round, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' }}><Icon name="profile" size={18} tone="faint" /></View>}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text variant="caption" tone="secondary">{t("labelTo")}</Text>
@@ -897,7 +938,7 @@ function SendInner() {
                 </KPressable>
               </View>
               {to ? <IconButton icon="close" label={t("keypadErase")} tone="ghost" onPress={() => setTo('')} /> : null}
-            </Surface>
+            </Card>
             <View style={{ flexDirection: 'row', gap: space[2] }}>
               <Chip label={t("chipPaste")} icon="copy" onPress={paste} />
               <Chip label={t("chipScan")} icon="scan" onPress={() => router.push('/scan')} />
@@ -911,17 +952,17 @@ function SendInner() {
             {isEns && ens.status === 'resolving' ? <Text variant="caption" tone="secondary">{t(tonDomain ? 'resolvingName' : 'resolvingEns')}</Text> : null}
 
             {poisoning ? (
-              <Surface style={{ borderColor: colors.danger, gap: space[2] }}>
+              <Card style={{ borderColor: colors.danger, gap: space[2] }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}><Icon name="alert" size={18} color={colors.danger} /><Text variant="body" tone="danger">{t("suspiciousAddressTitle")}</Text></View>
                 <Text variant="bodySecondary" tone="secondary">{t("suspiciousAddressBody")}</Text>
                 <View style={{ flexDirection: 'row', gap: space[2] }}><AddressGlyph address={poisoning.lookalike} size={28} /><Text variant="caption" tone="secondary" style={{ flex: 1 }}>{groupAddress(poisoning.lookalike)}</Text></View>
                 <View style={{ flexDirection: 'row', gap: space[2] }}><AddressGlyph address={recipient} size={28} /><Text variant="caption" tone="danger" style={{ flex: 1 }}>{groupAddress(recipient)}</Text></View>
-              </Surface>
+              </Card>
             ) : recipientOk && !isKnown ? (
-              <Surface style={{ borderColor: colors.warning, gap: space[1] }}>
+              <Card style={{ borderColor: colors.warning, gap: space[1] }}>
                 <Text variant="body" tone="warning">{t("neverSentWarning")}</Text>
                 <Text variant="bodySecondary" tone="secondary">{t("checkEndWarning")}<Text variant="body">…{recipient.slice(-4)}</Text></Text>
-              </Surface>
+              </Card>
             ) : null}
             {isContract ? <Text variant="caption" tone="warning">{t("contractAddressWarning")}</Text> : null}
             {/*
@@ -944,14 +985,14 @@ function SendInner() {
             {recents.length > 0 ? (
               <View style={{ gap: space[2] }}>
                 <Text variant="caption" tone="secondary">{t("recents")}</Text>
-                <Surface padded={false}>
+                <Card padded={false}>
                   {recents.slice(0, 5).map((r, i) => (
                     <React.Fragment key={r.address}>
                       <ListRow left={<AddressGlyph address={r.address} size={36} />} title={contacts.find((c) => c.address.toLowerCase() === r.address.toLowerCase())?.name ?? shortAddress(r.address)} subtitle={groupAddress(r.address)} onPress={() => setTo(r.address)} />
                       {i < Math.min(recents.length, 5) - 1 ? <Divider inset={64} /> : null}
                     </React.Fragment>
                   ))}
-                </Surface>
+                </Card>
               </View>
             ) : null}
             {addressError ? <Text variant="caption" tone="danger">{addressError}</Text> : null}
@@ -974,9 +1015,12 @@ function SendInner() {
               <Text variant="balance" tabular numberOfLines={1} adjustsFontSizeToFit tone={overBalance ? 'danger' : 'primary'}>
                 {amount || '0'} <Text variant="title2" tone="secondary">{inFiat ? sym : symbol}</Text>
               </Text>
-              <Text variant="caption" tone="secondary" tabular>
-                {price > 0 ? (inFiat ? `≈ ${tokenAmountStr || '0'} ${symbol}` : `≈ ${formatFiat(fiatOfAmount)} ${sym}`) : ' '}{price > 0 ? '  ⇅' : ''}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
+                <Text variant="caption" tone="secondary" tabular>
+                  {price > 0 ? (inFiat ? `≈ ${tokenAmountStr || '0'} ${symbol}` : `≈ ${formatFiat(fiatOfAmount)} ${sym}`) : ' '}
+                </Text>
+                {price > 0 ? <Icon name="arrowsDownUp" size={14} color={colors.textSecondary} /> : null}
+              </View>
             </KPressable>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               {balance == null ? <Skeleton width={160} /> : <Text variant="caption" tone="secondary" tabular>{t("balanceLabel")} : {formatTokenAmount(balance, decimals)} {symbol}</Text>}
@@ -1010,7 +1054,7 @@ function SendInner() {
           <FadeInUp style={{ flex: 1, gap: space[4] }}>
             <View style={{ alignItems: 'center', gap: 6, paddingTop: space[2] }}>
               <Text variant="micro" tone="secondary" style={{ letterSpacing: 1.2, textTransform: 'uppercase' }}>{t('sendYouSend')}</Text>
-              <Text variant="balance" tabular numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: 52, lineHeight: 58, textAlign: 'center' }}>
+              <Text variant="balance" tabular numberOfLines={1} adjustsFontSizeToFit style={{ textAlign: 'center' }}>
                 {formatTokenAmount(amountRaw, decimals)} <Text variant="title2" tone="secondary">{symbol}</Text>
               </Text>
               {price > 0 ? <Text variant="bodySecondary" tone="secondary" tabular>≈ {formatFiat(fiatOfAmount)} {sym}</Text> : null}
@@ -1022,7 +1066,7 @@ function SendInner() {
               from={senderAddress}
               facts={{ contactName, ownAccount: isOwnRecipient, paidBefore, lookalikeOf: poisoning?.lookalike, isContract }}
             />
-            <Surface padded={false} style={{ borderRadius: 26 }}>
+            <Card padded={false}>
               {/*
                 CE QUE LE LIEN ANNONCE, en tête et non dans un toast qui disparaît.
                 Bénéficiaire et motif sont écrits par l'émetteur du lien : affichés,
@@ -1049,7 +1093,7 @@ function SendInner() {
                 </>
               ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[3], padding: space[4] }}>
-                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 48, height: 48, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
                   <AddressGlyph address={recipient} size={34} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -1076,7 +1120,7 @@ function SendInner() {
                   right={<Text variant="body" tabular>{`${t('recipientGets')} ${formatTokenAmount(amountAfterTransferFee(amountRaw, tokenFee), decimals)} ${symbol}`}</Text>}
                 />
               ) : null}
-            </Surface>
+            </Card>
             {feeOptions ? (
               <View style={{ flexDirection: 'row', gap: space[2] }}>
                 {(['slow', 'normal', 'fast'] as FeeSpeed[]).map((s) => <Chip key={s} label={s === 'slow' ? t("feeSlow") : s === 'normal' ? t("feeNormal") : t("feeFast")} selected={speed === s} onPress={() => setSpeed(s)} />)}
@@ -1110,45 +1154,27 @@ function SendInner() {
               C'est donc ici que le garde-fou doit vivre, en plus de l'étape 1.
             */}
             {poisoning ? (
-              <Surface style={{ borderColor: colors.danger, gap: space[2] }}>
+              <Card style={{ borderColor: colors.danger, gap: space[2] }}>
                 <Text variant="body" tone="danger">{t("suspiciousAddressTitle")}</Text>
                 <Text variant="caption" tone="secondary">{t("suspiciousAddressBody")}</Text>
                 <View style={{ flexDirection: 'row', gap: space[2], alignItems: 'center' }}>
                   <AddressGlyph address={poisoning.lookalike} size={28} />
                   <Text variant="caption" tone="secondary" style={{ flex: 1 }}>{groupAddress(poisoning.lookalike)}</Text>
                 </View>
-              </Surface>
+              </Card>
             ) : null}
             {isSolanaPda ? <Text variant="caption" tone="danger">{t('solanaPdaWarning')}</Text> : null}
             <AntiDrainerBanner loading={isSimulating} simulation={simResult} />
             {simResult?.warningLevel === 'critical' ? (
-              <KPressable
-                onPress={() => setForceSendChecked((v) => !v)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: space[2],
-                  paddingVertical: space[1],
-                }}
-              >
-                <View
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    borderWidth: 1.5,
-                    borderColor: forceSendChecked ? colors.danger : colors.border,
-                    backgroundColor: forceSendChecked ? colors.danger : 'transparent',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {forceSendChecked ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
-                </View>
-                <Text variant="caption" tone="danger" style={{ flex: 1 }}>
-                  {t('antiDrainerForceSendConfirm')}
-                </Text>
-              </KPressable>
+              <View style={{ paddingVertical: space[1] }}>
+                <Checkbox
+                  tone="danger"
+                  size={20}
+                  checked={forceSendChecked}
+                  onChange={setForceSendChecked}
+                  label={<Text variant="caption" tone="danger">{t('antiDrainerForceSendConfirm')}</Text>}
+                />
+              </View>
             ) : null}
           </FadeInUp>
         ) : null}
@@ -1158,10 +1184,10 @@ function SendInner() {
           <>
             {/* Le moment de l'envoi : orbite, comète d'or, puis célébration à la confirmation. */}
             <SendResult stage={stage} amount={`${formatTokenAmount(amountRaw, decimals)} ${symbol}`} dest={`${t('towards')} ${destLabel ?? shortAddress(recipient)} · ${chain.name}`} />
-            <Surface style={{ gap: space[4] }}>
+            <Card style={{ gap: space[4] }}>
               <TxSteps stage={stage} />
               {stage === 'failed' ? <Text variant="caption" tone="danger">{t("txFailedMsg")}</Text> : null}
-            </Surface>
+            </Card>
             <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>{t("canLeaveScreenInfo")}</Text>
             {hash ? <Button label={t('trackTransaction')} variant="secondary" size="md" onPress={() => router.push({ pathname: '/tracking', params: { hash, chainId: chain.id } })} /> : null}
             <View style={{ flex: 1 }} />

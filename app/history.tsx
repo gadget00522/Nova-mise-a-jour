@@ -19,7 +19,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, SectionList, RefreshControl, Share, ScrollView } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, IconButton, Surface, Divider, Chip, Skeleton, EmptyState, ActivityRow, Pressable, Input, SegmentedControl } from '../ui/kit';
+import { Text, IconButton, Divider, Chip, Skeleton, EmptyState, ActivityRow, Pressable, Input, SegmentedControl, Card } from '../ui/kit';
 import { Icon } from '../ui/icon';
 import { useTheme } from '../ui/theme';
 import { space, radius, SCREEN_MARGIN } from '../ui/tokens';
@@ -30,6 +30,7 @@ import { useContacts } from '../lib/contactsStore';
 import { usePortfolioStore } from '../lib/portfolio';
 import { useSpamOf, useHistoryChains } from '../lib/historySpam';
 import { useT, useActivityT, useSettings, fiatSymbol } from '../lib/settingsStore';
+import { csvLabels } from '../lib/csvLabels';
 import { toast } from '../lib/toast';
 import { haptic } from '../lib/haptics';
 import {
@@ -43,7 +44,7 @@ import {
   groupByDay,
   formatFiat,
   type TxSummary,
-  type HumanTx,
+  type HumanTx
 } from '../src';
 import { BtcAccelerate } from '../ui/BtcAccelerate';
 
@@ -173,14 +174,14 @@ export default function History() {
   }, [rows, chains]);
 
   const q = query.trim().toLowerCase();
-  const matches = (r: Row) => {
+  const matches = useCallback((r: Row) => {
     if (!q) return true;
     const hay = [r.h.label, r.h.title, r.h.subtitle, r.tx.asset, r.tx.hash, r.tx.from, r.tx.to, chainNameOf(r.tx.chain), ...(r.tx.legs ?? []).map((l) => l.asset)]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
     return hay.includes(q);
-  };
+  }, [q]);
   const visible = useMemo(
     () =>
       rows.filter((r) => {
@@ -191,9 +192,7 @@ export default function History() {
         if (filter === 'swap' && (r.tx.type ?? '').toUpperCase() !== 'SWAP') return false;
         return matches(r);
       }),
-    // `matches` ne dépend que de `q`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, onlyChain, filter, q],
+    [rows, onlyChain, filter, matches],
   );
   const sections = useMemo(
     () =>
@@ -214,6 +213,7 @@ export default function History() {
       nativeDecimals: chain.nativeDecimals,
       explorerUrl: chain.explorerUrl,
       chainOf: chainMetaOf,
+      labels: csvLabels(t),
     });
     try {
       await Share.share({ message: csv, title: 'kalyx-history.csv' });
@@ -245,13 +245,13 @@ export default function History() {
     <View style={{ gap: space[3], paddingBottom: space[2] }}>
       <BtcAccelerate />
       {poisoned ? (
-        <Surface style={{ borderColor: colors.danger, gap: space[1] }}>
+        <Card style={{ borderColor: colors.danger, gap: space[1] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
             <Icon name="alert" size={18} color={colors.danger} />
             <Text variant="body" tone="danger" style={{ flex: 1 }}>{t('histPoisonTitle')}</Text>
           </View>
           <Text variant="caption" tone="secondary">{t('histPoisonBody')}</Text>
-        </Surface>
+        </Card>
       ) : null}
       <Input value={query} onChangeText={setQuery} placeholder={t('histSearch')} autoCapitalize="none" autoCorrect={false} right={query ? <IconButton icon="close" label={t('actionCancel')} tone="ghost" onPress={() => setQuery('')} /> : <Icon name="search" size={18} tone="muted" />} />
       <SegmentedControl
@@ -280,21 +280,21 @@ export default function History() {
   const unfiltered = filter === 'all' && onlyChain === null && !q;
   const empty =
     (loading || (!attempted && hasAnyAddress)) && cached.length === 0 ? (
-      <Surface padded={false}>
+      <Card padded={false}>
         {[0, 1, 2, 3, 4].map((i) => (
           <View key={i} style={{ height: 64, paddingHorizontal: space[4], flexDirection: 'row', alignItems: 'center', gap: space[3] }}>
             <Skeleton width={40} height={40} round />
             <View style={{ flex: 1, gap: space[2] }}><Skeleton width="45%" /><Skeleton width="30%" height={12} /></View>
           </View>
         ))}
-      </Surface>
+      </Card>
     ) : unfiltered && cached.length === 0 && !anyFetched && attempted && hasAnyAddress ? (
       // Aucun réseau n'a répondu : on ne prétend pas « aucune activité » (même règle que l'accueil).
-      <Surface>
+      <Card>
         <EmptyState icon="warning" title={t('activityUnavailableTitle')} body={t('activityUnavailableBody')} actionLabel={t('retry')} onAction={() => void load(true)} />
-      </Surface>
+      </Card>
     ) : (
-      <Surface>
+      <Card>
         <EmptyState
           icon="history"
           title={unfiltered ? t('noActivityYet') : t('nothingForFilter')}
@@ -302,7 +302,7 @@ export default function History() {
           actionLabel={unfiltered ? t('receive') : undefined}
           onAction={unfiltered ? () => router.push('/receive') : undefined}
         />
-      </Surface>
+      </Card>
     );
 
   const footer = (
@@ -316,7 +316,7 @@ export default function History() {
       {showSpam && hiddenShown.length > 0 ? (
         <>
           <Text variant="micro" tone="tertiary" style={{ textAlign: 'center' }}>{t('histHiddenNote')}</Text>
-          <Surface padded={false}>{hiddenShown.map((r, i) => <React.Fragment key={`${r.tx.chain}:${r.tx.hash}`}>{renderRow(r, i === hiddenShown.length - 1)}</React.Fragment>)}</Surface>
+          <Card padded={false}>{hiddenShown.map((r, i) => <React.Fragment key={`${r.tx.chain}:${r.tx.hash}`}>{renderRow(r, i === hiddenShown.length - 1)}</React.Fragment>)}</Card>
         </>
       ) : null}
     </View>

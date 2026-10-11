@@ -1,9 +1,9 @@
 /** StepBar — barre de progression fine (§4.3) : une vraie séquence, donc numérotation justifiée. */
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useTheme } from '../theme';
-import { springs } from '../tokens';
+import { springs, radii } from '../tokens';
 
 export function StepBar({ step, total }: { step: number; total: number }) {
   const { colors } = useTheme();
@@ -11,10 +11,10 @@ export function StepBar({ step, total }: { step: number; total: number }) {
   useEffect(() => {
     p.value = withSpring(step / total, springs.standard);
   }, [step, total, p]);
-  const style = useAnimatedStyle(() => ({ width: `${p.value * 100}%` }));
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: p.value }] }));
   return (
-    <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.surface3, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: total, now: step }}>
-      <Animated.View style={[{ height: 3, backgroundColor: colors.primary }, style]} />
+    <View style={{ height: 3, borderRadius: radii.full, backgroundColor: colors.surface3, overflow: 'hidden' }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: total, now: step }}>
+      <Animated.View style={[{ height: 3, width: '100%', transformOrigin: 'left', backgroundColor: colors.primary }, style]} />
     </View>
   );
 }

@@ -8,7 +8,7 @@
  * `danger` : anneau et disque rouges, maintien porté à 2 s, pas d'éclat — un
  * envoi forcé malgré une alerte n'est pas un moment à célébrer.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Pressable as RNPressable, View } from 'react-native';
 import Animated, {
   Easing,
@@ -25,7 +25,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Text } from './Text';
 import { Icon, type IconName } from '../icon';
 import { useTheme } from '../theme';
-import { durations, springs } from '../tokens';
+import { durations, springs, radii } from '../tokens';
 import { useT } from '../../lib/settingsStore';
 import { haptic } from '../../lib/haptics';
 import { SparkBurst } from './SparkBurst';
@@ -68,9 +68,9 @@ export function HoldRing({
   const [done, setDone] = useState(0);
   const total = danger ? Math.max(durationMs, 2000) : durationMs;
 
-  const stopTicks = () => {
+  const stopTicks = useCallback(() => {
     if (tick.current) { clearTimeout(tick.current); tick.current = null; }
-  };
+  }, []);
   const scheduleTick = () => {
     const p = Math.min(1, (Date.now() - startedAt.current) / total);
     tick.current = setTimeout(() => {
@@ -124,11 +124,13 @@ export function HoldRing({
     cancelAnimation(progress);
     if (progress.value < 1) progress.value = withSpring(0, springs.standard);
   };
-  useEffect(() => stopTicks, []);
+  useEffect(() => stopTicks, [stopTicks]);
   // Bloqué, ou passé en mode danger (maintien plus long) pendant le geste : le maintien repart de zéro.
-  useEffect(() => {
+  const cancelIfHolding = useEffectEvent(() => {
     if (holding.current) cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    cancelIfHolding();
   }, [disabled, danger]);
 
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: CIRC * (1 - progress.value) }));
@@ -146,7 +148,7 @@ export function HoldRing({
       <View style={{ width: SIZE, height: SIZE }}>
         <Animated.View
           pointerEvents="none"
-          style={[{ position: 'absolute', left: SIZE / 2 - 80, top: SIZE / 2 - 80, width: 160, height: 160, borderRadius: 80, backgroundColor: '#CFE3FF' }, flashStyle]}
+          style={[{ position: 'absolute', left: SIZE / 2 - 80, top: SIZE / 2 - 80, width: 160, height: 160, borderRadius: radii.full, backgroundColor: '#CFE3FF' }, flashStyle]}
         />
         <RNPressable
           onPressIn={start}

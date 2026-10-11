@@ -1,22 +1,22 @@
-import { Button, Chip, Input, ScreenHeader, Pressable as KPressable, Text as KText } from '../ui/kit';
-import { GOLD, IconDisc, NovaCard, NovaHero, NovaSwitch, Rise, SectionLabel } from '../ui/nova';
-import React, { useState, useEffect } from 'react';
+import { Button, Chip, Input, ScreenHeader, Pressable as KPressable, Text as KText, Card, Screen, Switch } from '../ui/kit';
+import { GOLD, IconDisc, NovaHero, Rise, SectionLabel } from '../ui/nova';
+import { useState, useEffect } from 'react';
 import { View, Alert, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { spacing } from '../ui/theme';
 import { useSettings } from '../lib/settingsStore';
 import { useT } from '../lib/settingsStore';
-import { PremiumScreen } from '../ui/premium';
 import { Icon } from '../ui/icon';
 import { useAiStore, AiProvider } from '../lib/aiStore';
 import { validateAiKey } from '../lib/aiValidator';
-import { PROVIDER_DEFAULTS } from '../lib/aiConfig';
+import { PROVIDER_DEFAULTS, formatAiError } from '../lib/aiConfig';
+import { useShallow } from 'zustand/react/shallow';
 
 export default function AiSettings() {
   const t = useT();
   const aiToolsEnabled = useSettings((st) => st.aiToolsEnabled);
   const setAiToolsEnabled = useSettings((st) => st.setAiToolsEnabled);
-  const { isEnabled, provider, apiKey, setApiKey, disableAi, loadInitialState } = useAiStore();
+  const { isEnabled, provider, apiKey, setApiKey, disableAi, loadInitialState } = useAiStore(useShallow((s) => ({ isEnabled: s.isEnabled, provider: s.provider, apiKey: s.apiKey, setApiKey: s.setApiKey, disableAi: s.disableAi, loadInitialState: s.loadInitialState })));
   
   const [selectedProvider, setSelectedProvider] = useState<AiProvider>(provider);
   const [inputKey, setInputKey] = useState(apiKey || '');
@@ -42,7 +42,9 @@ export default function AiSettings() {
         Alert.alert(t('success'), t('aiSuccessConnected'));
         router.back();
       } else {
-        Alert.alert(t('aiConnectionFailed'), check.error || t('aiErrorInternal'));
+        // Retraduit depuis le CODE avec t() : le texte suit la langue de l'écran,
+        // jamais une phrase figée par la couche réseau.
+        Alert.alert(t('aiConnectionFailed'), check.code ? formatAiError(t, { code: check.code, status: check.status, detail: check.detail }) : t('aiErrorInternal'));
       }
     } catch (e) {
       Alert.alert(t('aiConnectionFailed'), e instanceof Error ? e.message : t('aiErrorInternal'));
@@ -67,18 +69,18 @@ export default function AiSettings() {
    * sont gérés une seule fois, par PremiumScreen.
    */
   return (
-    <PremiumScreen>
+    <Screen>
       <ScreenHeader fallback="/settings" />
       <NovaHero icon="sparkles" tone="gold" title={t('copilotByok')} subtitle={t('aiByokIntro')} />
 
       {isEnabled ? (
-        <NovaCard delay={120} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(1.5) }}>
+        <Card rise delay={120} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(1.5) }}>
           <IconDisc name="check" size={36} />
           <View style={{ flex: 1, gap: 2 }}>
             <KText variant="body" tone="up">{t('aiActiveTitle')}</KText>
             <KText variant="caption" tone="secondary">{t('aiActiveDesc')}</KText>
           </View>
-        </NovaCard>
+        </Card>
       ) : null}
 
       <SectionLabel>{t('aiProvider')}</SectionLabel>
@@ -90,7 +92,7 @@ export default function AiSettings() {
         </View>
       </Rise>
 
-      <NovaCard delay={200} style={{ gap: spacing(1.5) }}>
+      <Card rise delay={200} style={{ gap: spacing(1.5) }}>
         <Input label={t('aiApiKey')} placeholder="sk-…" value={inputKey} onChangeText={setInputKey} secureTextEntry sensitive />
         {PROVIDER_DEFAULTS[selectedProvider]?.helperUrl ? (
           <KPressable onPress={() => Linking.openURL(PROVIDER_DEFAULTS[selectedProvider].helperUrl!)} hitSlop={8} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -104,7 +106,7 @@ export default function AiSettings() {
             <Input label={t('aiModelName')} placeholder="qwen-2.5-72b · gemini-1.5-pro" value={customModel} onChangeText={setCustomModel} autoCapitalize="none" autoCorrect={false} />
           </>
         ) : null}
-      </NovaCard>
+      </Card>
 
       <View style={{ gap: spacing(1.25) }}>
         <Button label={t('aiTestAndActivate')} onPress={() => void handleSaveAndActivate()} loading={loading} disabled={!canSave} />
@@ -119,17 +121,17 @@ export default function AiSettings() {
         assistant inactif n'aurait aucun sens.
       */}
       {isEnabled ? (
-        <NovaCard delay={240} style={{ gap: spacing(1.25) }}>
+        <Card rise delay={240} style={{ gap: spacing(1.25) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(1.5) }}>
             <View style={{ flex: 1, gap: 4 }}>
               <KText variant="body">{t('aiToolsTitle')}</KText>
               <KText variant="caption" tone="secondary">{t('aiToolsDesc')}</KText>
             </View>
-            <NovaSwitch value={aiToolsEnabled} onValueChange={setAiToolsEnabled} />
+            <Switch value={aiToolsEnabled} onValueChange={setAiToolsEnabled} />
           </View>
           <KText variant="caption" tone="warning">{t('aiToolsWarn')}</KText>
-        </NovaCard>
+        </Card>
       ) : null}
-    </PremiumScreen>
+    </Screen>
   );
 }

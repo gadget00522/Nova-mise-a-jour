@@ -12,14 +12,13 @@
  */
 import { NovaHero, ScreenOrbit } from '../ui/nova';
 import { Icon } from '../ui/icon';
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
   Button,
-  Surface,
   ListRow,
   Divider,
   Input,
@@ -28,7 +27,7 @@ import {
   EmptyState,
   AddressGlyph,
   Chip,
-  Pressable as KPressable,
+  Card
 } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { space, SCREEN_MARGIN } from '../ui/tokens';
@@ -47,8 +46,9 @@ import {
   isValidSolanaAddress,
   isValidBtcAddress,
   isValidTonAddress,
-  type AddressFamily,
+  type AddressFamily
 } from '../src';
+import { useShallow } from 'zustand/react/shallow';
 
 // TON : le carnet ne dépend d'aucun réseau, on accepte les deux écritures (`testnet: true`).
 const CHECKS = { evm: isValidEvmAddress, solana: isValidSolanaAddress, bitcoin: isValidBtcAddress, ton: (a: string) => isValidTonAddress(a, { testnet: true }) };
@@ -97,7 +97,10 @@ function ContactRow({
       subtitle={subtitle}
       right={
         pickMode ? (
-          <Text variant="caption" tone="secondary">{t('chooseWord')} ›</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[1] }}>
+            <Text variant="caption" tone="secondary">{t('chooseWord')}</Text>
+            <Icon name="chevron" size={14} tone="muted" />
+          </View>
         ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
             {/*
@@ -128,7 +131,7 @@ export default function Contacts() {
   const insets = useSafeAreaInsets();
   const { pick } = useLocalSearchParams<{ pick?: string }>();
   const pickMode = pick === '1';
-  const { contacts, add, update, remove } = useContacts();
+  const { contacts, add, update, remove } = useContacts(useShallow((s) => ({ contacts: s.contacts, add: s.add, update: s.update, remove: s.remove })));
 
   const [query, setQuery] = useState('');
   const [form, setForm] = useState<null | { id?: string; name: string; address: string }>(null);
@@ -211,7 +214,7 @@ export default function Contacts() {
         ) : null}
 
         {contacts.length === 0 ? (
-          <Surface>
+          <Card>
             <EmptyState
               icon="contacts"
               title={t('noContactsYet')}
@@ -219,13 +222,13 @@ export default function Contacts() {
               actionLabel={t('contactNew')}
               onAction={() => setForm({ name: '', address: '' })}
             />
-          </Surface>
+          </Card>
         ) : shown.length === 0 ? (
-          <Surface>
+          <Card>
             <EmptyState icon="contacts" title={t('nothingForFilter')} />
-          </Surface>
+          </Card>
         ) : (
-          <Surface padded={false}>
+          <Card padded={false}>
             {shown.map((c, i) => (
               <FadeInUp key={c.id} delay={cascadeDelay(i)}>
                 <ContactRow
@@ -239,7 +242,7 @@ export default function Contacts() {
                 {i < shown.length - 1 ? <Divider inset={68} /> : null}
               </FadeInUp>
             ))}
-          </Surface>
+          </Card>
         )}
       </ScrollView>
 

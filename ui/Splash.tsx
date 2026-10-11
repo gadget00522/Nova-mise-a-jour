@@ -16,12 +16,12 @@
  * 100 % Animated (transform/opacity, useNativeDriver) : un seul driver `progress`
  * pilote toutes les particules → fluide, aucune dépendance native ajoutée.
  */
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KalyxLogoIgnite } from './KalyxLogo';
 import { Halo } from './kit/Halo';
-import { splashParticles, splashSweep, BRAND_GOLD } from './tokens';
+import { splashParticles, splashSweep, BRAND_GOLD, radii } from './tokens';
 import { fonts, useTheme } from './theme';
 
 const { width: W } = Dimensions.get('window');
@@ -41,7 +41,6 @@ const BAR_H = 2;
 /** De combien le logo est remonté par rapport au centre de l'écran. */
 export const SPLASH_LOGO_LIFT = (STACK_GAP + WORD_LINE + WORD_GAP + BAR_H) / 2;
 // Couleurs du halo (ui/tokens.ts) : blanc, glacier, frange chaude — pas de violet (§2).
-const PARTICLE_COLORS = ['#FFFFFF', '#CFE3FF', '#FFD9B8', '#E6EEFF'];
 
 interface P {
   x0: number;
@@ -94,7 +93,7 @@ function Particle({ p, progress }: { p: P; progress: Animated.Value }) {
 }
 
 export function Splash({ onFinish }: { onFinish: () => void }) {
-  const { mode, colors, gradients } = useTheme();
+  const { mode, colors } = useTheme();
   const progress = useRef(new Animated.Value(0)).current; // convergence des particules
   const logoIn = useRef(new Animated.Value(0)).current; // condensation du logo
   const wordOp = useRef(new Animated.Value(0)).current;
@@ -197,7 +196,7 @@ export function Splash({ onFinish }: { onFinish: () => void }) {
               transform: [{ scaleX: wordOp.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }],
               width: 150,
               height: BAR_H,
-              borderRadius: 2,
+              borderRadius: radii.xs,
               shadowColor: BRAND_GOLD.light,
               shadowOpacity: 0.9,
               shadowRadius: 8,
@@ -208,7 +207,7 @@ export function Splash({ onFinish }: { onFinish: () => void }) {
               colors={['transparent', BRAND_GOLD.light, BRAND_GOLD.deep, 'transparent']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ flex: 1, borderRadius: 2 }}
+              style={{ flex: 1, borderRadius: radii.xs }}
             />
           </Animated.View>
         </View>

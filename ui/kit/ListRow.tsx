@@ -13,7 +13,7 @@ import { useFallbackLogo } from './useFallbackLogo';
 import { TokenIcon } from './TokenIcon';
 import { Icon } from '../icon';
 import { useTheme } from '../theme';
-import { space, TOKEN_ROW_HEIGHT } from '../tokens';
+import { space, TOKEN_ROW_HEIGHT, radii } from '../tokens';
 
 /** Fond Crépuscule pendant l'appui (pas de scale sur une ligne de liste). */
 function PressedBackground({ onPress, pressedColor, children }: { onPress: () => void; pressedColor: string; children: React.ReactNode }) {
@@ -24,19 +24,27 @@ function PressedBackground({ onPress, pressedColor, children }: { onPress: () =>
   );
 }
 
-export function ListRow({ left, title, subtitle, right, onPress, chevron, style }: { left?: React.ReactNode; title: string; subtitle?: string; right?: React.ReactNode; onPress?: () => void; chevron?: boolean; style?: StyleProp<ViewStyle> }) {
+export function ListRow({ left, title, subtitle, right, onPress, chevron, divider, wrap, style }: {
+  left?: React.ReactNode; title: string; subtitle?: string; right?: React.ReactNode; onPress?: () => void; chevron?: boolean;
+  /** Trait au-dessus de la ligne (toutes sauf la première d'un groupe). */
+  divider?: boolean;
+  /** Titre et sous-titre sur plusieurs lignes au lieu d'être tronqués. */
+  wrap?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   const { colors } = useTheme();
+  const lines = wrap ? undefined : 1;
   const content = (
-    <View style={[{ minHeight: TOKEN_ROW_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: space[3], paddingHorizontal: space[4] }, style]}>
+    <View style={[{ minHeight: TOKEN_ROW_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: space[3], paddingHorizontal: space[4], paddingVertical: wrap ? space[2] : 0 }, divider ? { borderTopWidth: 1, borderTopColor: colors.border } : null, style]}>
       {React.isValidElement(left) && left.type === Icon ? (
         // Icône nue → disque Orbite, comme les disques d'action (Nova).
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 36, height: 36, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={(left.props as { name: React.ComponentProps<typeof Icon>['name'] }).name} size={18} color={(left.props as { color?: string }).color ?? colors.text} />
         </View>
       ) : left}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text variant="body" numberOfLines={1}>{title}</Text>
-        {subtitle ? <Text variant="caption" tone="secondary" numberOfLines={1}>{subtitle}</Text> : null}
+        <Text variant="body" numberOfLines={lines}>{title}</Text>
+        {subtitle ? <Text variant="caption" tone="secondary" numberOfLines={lines}>{subtitle}</Text> : null}
       </View>
       {right ? <View style={{ flexShrink: 0, marginLeft: 4 }}>{right}</View> : null}
       {chevron ? <Icon name="chevron" size={16} color={colors.textTertiary} /> : null}
@@ -60,9 +68,10 @@ export function TokenRow({
   /** Réseau du jeton : sert à retrouver un logo manquant dans la liste du réseau. */ chainId?: string;
   /** Logo du réseau en pastille. */ chainBadge?: string | null;
 }) {
+  const { colors } = useTheme();
   const up = (changePct ?? 0) >= 0;
   const resolvedLogo = useFallbackLogo(chainId, address, logo);
-  // Une variation qui s'arrondit à 0,0 % n'apprend rien : « ↓ −0,0 % » n'est plus affiché.
+  // Une variation qui s'arrondit à 0,0 % n'apprend rien : « −0,0 % » n'est plus affiché.
   const showChange = changePct != null && Math.abs(changePct) >= 0.05;
   return (
     <ListRow
@@ -74,9 +83,12 @@ export function TokenRow({
         <View style={{ alignItems: 'flex-end' }}>
           <Text variant="body" tabular numberOfLines={1}>{hidden ? '••••' : fiat ?? '—'}</Text>
           {showChange && !hidden ? (
-            <Text variant="caption" tone={up ? 'up' : 'down'} tabular>
-              {up ? '↑ +' : '↓ −'}{Math.abs(changePct).toFixed(1).replace('.', decimalSeparator())} %
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Icon name={up ? 'trendUp' : 'trendDown'} size={14} color={up ? colors.up : colors.down} />
+              <Text variant="caption" tone={up ? 'up' : 'down'} tabular>
+                {up ? '+' : '−'}{Math.abs(changePct).toFixed(1).replace('.', decimalSeparator())} %
+              </Text>
+            </View>
           ) : null}
         </View>
       }

@@ -3,10 +3,10 @@
  * Arrivée, alimentée par le statut LI.FI (toutes les 10 s). Remplace l'ancien
  * BridgeTrackerModal. On peut quitter : la notification suit.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Text, Button, Surface, Sheet, Divider } from './kit';
+import { Text, Button, Sheet, Divider, Card } from './kit';
 import { Icon } from './icon';
 import { useTheme } from './theme';
 import { space, radius } from './tokens';
@@ -23,15 +23,17 @@ export function BridgeProgress({ visible, hash, summary, fromChainId, toChainId,
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const from = fromChainId ? getAdapter(fromChainId).config : null;
   const to = toChainId ? getAdapter(toChainId).config : null;
+  const lifiKey = (c: NonNullable<typeof from>) => (c.family === 'solana' ? 'SOL' : String(c.evmChainId ?? c.lifiKey));
+  const fromKey = from ? lifiKey(from) : null;
+  const toKey = to ? lifiKey(to) : null;
 
   useEffect(() => {
-    if (!visible || !hash || !from || !to) return;
+    if (!visible || !hash || !fromKey || !toKey) return;
     setStage('departure');
     setDestHash(null);
-    const key = (c: typeof from) => (c.family === 'solana' ? 'SOL' : String(c.evmChainId ?? c.lifiKey));
     const check = async () => {
       try {
-        const res = await fetch(`https://li.quest/v1/status?txHash=${hash}&fromChain=${key(from)}&toChain=${key(to)}`);
+        const res = await fetch(`https://li.quest/v1/status?txHash=${hash}&fromChain=${fromKey}&toChain=${toKey}`);
         const d = (await res.json()) as { status?: string; substatus?: string; receiving?: { txHash?: string } };
         if (d.status === 'PENDING') setStage('bridging');
         if (d.status === 'DONE') { setStage('arrived'); setDestHash(d.receiving?.txHash ?? null); }
@@ -42,12 +44,12 @@ export function BridgeProgress({ visible, hash, summary, fromChainId, toChainId,
     timer.current = setInterval(check, 10_000);
     void check();
     return () => { if (timer.current) clearInterval(timer.current); };
-  }, [visible, hash, fromChainId, toChainId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, hash, fromKey, toKey]);
 
   const steps: { key: Stage; label: string }[] = [
-    { key: 'departure', label: `Départ · ${from?.name ?? ''}` },
-    { key: 'bridging', label: 'Pont en cours' },
-    { key: 'arrived', label: `Arrivée · ${to?.name ?? ''}` },
+    { key: 'departure', label: t('bridgeStepDeparture').replace('{chain}', from?.name ?? '') },
+    { key: 'bridging', label: t('bridgeStepBridging') },
+    { key: 'arrived', label: t('bridgeStepArrival').replace('{chain}', to?.name ?? '') },
   ];
   const reached = stage === 'failed' ? 2 : steps.findIndex((s) => s.key === stage) + 1;
 
@@ -55,7 +57,7 @@ export function BridgeProgress({ visible, hash, summary, fromChainId, toChainId,
     <Sheet visible={visible} onClose={onClose}>
       <Text variant="title2">{stage === 'arrived' ? t('bridgeCompleted') : stage === 'failed' ? t('bridgeFailed') : t('bridgeInProgress')}</Text>
       {summary ? <Text variant="bodySecondary" tone="secondary">{summary}</Text> : null}
-      <Surface style={{ gap: space[3] }}>
+      <Card style={{ gap: space[3] }}>
         {steps.map((s, i) => {
           const done = i < reached;
           const failedHere = stage === 'failed' && i === 1;
@@ -68,7 +70,7 @@ export function BridgeProgress({ visible, hash, summary, fromChainId, toChainId,
             </View>
           );
         })}
-      </Surface>
+      </Card>
       <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>{t('bridgeDurationHint')}</Text>
       {from?.explorerUrl && hash ? <Button label={t('sourceTransaction')} variant="secondary" size="md" onPress={() => router.push({ pathname: '/browser', params: { url: `${from.explorerUrl}/tx/${hash}` } })} /> : null}
       {to?.explorerUrl && destHash ? <Button label={t('destinationTransaction')} variant="secondary" size="md" onPress={() => router.push({ pathname: '/browser', params: { url: `${to.explorerUrl}/tx/${destHash}` } })} /> : null}

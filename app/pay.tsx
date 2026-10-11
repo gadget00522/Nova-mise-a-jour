@@ -8,15 +8,16 @@
  * native empêcherait de payer le jour où elle diverge.
  */
 import { withWatchOnlyGate } from '../ui/WatchOnlyGate';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import { Linking } from 'react-native';
-import { Text, Button, Surface, ListRow, IconButton, Skeleton, EmptyState, Chip, Pressable as KPressable } from '../ui/kit';
+import { Text, Button, ListRow, IconButton, Skeleton, EmptyState, Chip, Pressable as KPressable, Card } from '../ui/kit';
 import { useTheme } from '../ui/theme';
+import { Icon } from '../ui/icon';
 import { space, SCREEN_MARGIN } from '../ui/tokens';
 import { ConfirmUnlock } from '../ui/ConfirmUnlock';
 import { usePay, payAmountText, type PayOption } from '../lib/walletconnectPay';
@@ -34,10 +35,11 @@ import {
   needsCollect,
   payEligibleHoldings,
   payCoverageLines,
-  isWalletError,
+  isWalletError
 } from '../src';
 import { useWallet } from '../lib/walletStore';
 import { usePortfolioStore } from '../lib/portfolio';
+import { useShallow } from 'zustand/react/shallow';
 
 /** Domaines autorisés dans la WebView de capture. */
 const COLLECT_HOST = 'pay.walletconnect.com';
@@ -66,7 +68,7 @@ function PayScreenInner() {
     recheck,
     confirm,
     reset,
-  } = usePay();
+  } = usePay(useShallow((s) => ({ phase: s.phase, options: s.options, selected: s.selected, collectUrl: s.collectUrl, result: s.result, failure: s.failure, detail: s.detail, payer: s.payer, collectedIds: s.collectedIds, settledChain: s.settledChain, open: s.open, select: s.select, collected: s.collected, recheck: s.recheck, confirm: s.confirm, reset: s.reset })));
 
   /*
    * LA TRADUCTION SE FAIT ICI, à partir d'un code. Le magasin portait des
@@ -160,12 +162,14 @@ function PayScreenInner() {
   const otherAccounts = useMemo(() => accounts.filter((a) => a.index !== payer?.index), [accounts, payer?.index]);
   const [asking, setAsking] = useState(false);
 
+  const openLink = useEffectEvent((link: string) => {
+    void open(link, { theme: mode === 'light' ? 'light' : 'dark' });
+  });
   useEffect(() => {
     const link = params.link ? String(params.link) : '';
-    if (link) void open(link, { theme: mode === 'light' ? 'light' : 'dark' });
+    if (link) openLink(link);
     return () => reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.link]);
+  }, [params.link, reset]);
 
   const info = options?.info;
   const expiresIn = useMemo(() => {
@@ -314,7 +318,7 @@ function PayScreenInner() {
             }
           />
 
-          <Surface padded={false}>
+          <Card padded={false}>
             {paid ? (
               <ListRow
                 title={t('payRequested')}
@@ -336,7 +340,7 @@ function PayScreenInner() {
                 onPress={explorerUrl ? () => void Linking.openURL(explorerUrl) : undefined}
               />
             ) : null}
-          </Surface>
+          </Card>
 
           {/* UN SEUL bouton, et il ramène à l'accueil : il n'y a plus rien à faire ici. */}
           <Button label={t('done')} onPress={() => router.dismissTo('/home')} />
@@ -366,7 +370,7 @@ function PayScreenInner() {
           needsInfo ? (
             <Chip label={t('payInfoRequired')} selected={false} onPress={() => select(o, mode === 'light' ? 'light' : 'dark')} />
           ) : (
-            <Text variant="caption" tone={active ? 'primary' : 'secondary'}>{active ? '✓' : ''}</Text>
+            active ? <Icon name="checkmark" size={16} color={colors.text} weight="bold" /> : null
           )
         }
         onPress={() => select(o, mode === 'light' ? 'light' : 'dark')}
@@ -393,11 +397,11 @@ function PayScreenInner() {
 
       <ScrollView contentContainerStyle={{ padding: SCREEN_MARGIN, gap: space[4], paddingBottom: insets.bottom + space[6] }}>
         {phase === 'loading' ? (
-          <Surface><View style={{ gap: space[2] }}><Skeleton width="60%" /><Skeleton width="40%" height={12} /></View></Surface>
+          <Card><View style={{ gap: space[2] }}><Skeleton width="60%" /><Skeleton width="40%" height={12} /></View></Card>
         ) : null}
 
         {phase === 'error' ? (
-          <Surface>
+          <Card>
             {/*
               LA RELANCE PLUTÔT QUE LE RETOUR. Quand la vérification est en cours
               d'examen, « Retour » oblige à rescanner le QR pour savoir où elle
@@ -427,7 +431,7 @@ function PayScreenInner() {
                 toast.success(t('copied'));
               }}
             />
-          </Surface>
+          </Card>
         ) : null}
 
         {/*
@@ -438,7 +442,7 @@ function PayScreenInner() {
         */}
         {stating ? (
           <>
-            <Surface>
+            <Card>
               <View style={{ gap: space[2] }}>
                 <Text variant="caption" tone="secondary">{t('payAccountUsed')}</Text>
                 <KPressable
@@ -451,9 +455,9 @@ function PayScreenInner() {
                   <Text variant="body" tabular>{payer ? shortAddress(payer.evmAddress) : '—'}</Text>
                 </KPressable>
               </View>
-            </Surface>
+            </Card>
 
-            <Surface>
+            <Card>
               <View style={{ gap: space[2] }}>
                 <Text variant="caption" tone="secondary">{t('payYouHold')}</Text>
                 {eligible.length === 0 ? (
@@ -472,9 +476,9 @@ function PayScreenInner() {
                 */}
                 <Text variant="micro" tone="tertiary">{t('payMerchantDecides')}</Text>
               </View>
-            </Surface>
+            </Card>
 
-            <Surface>
+            <Card>
               <View style={{ gap: space[2] }}>
                 <Text variant="caption" tone="secondary">{t('payAcceptedAssets')}</Text>
                 {coverage.map((c) => (
@@ -483,7 +487,7 @@ function PayScreenInner() {
                   </Text>
                 ))}
               </View>
-            </Surface>
+            </Card>
 
             {/*
               PAYER DEPUIS UN AUTRE COMPTE, sans rescanner. Les fonds ne sont pas
@@ -491,7 +495,7 @@ function PayScreenInner() {
               changer à l'accueil puis refaire le QR.
             */}
             {otherAccounts.length > 0 ? (
-              <Surface>
+              <Card>
                 <View style={{ gap: space[2] }}>
                   <Text variant="caption" tone="secondary">{t('payOtherAccount')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[2] }}>
@@ -513,14 +517,14 @@ function PayScreenInner() {
                     ))}
                   </View>
                 </View>
-              </Surface>
+              </Card>
             ) : null}
           </>
         ) : null}
 
         {/* CE QU'ON PAIE ET À QUI, avant tout le reste. */}
         {info ? (
-          <Surface>
+          <Card>
             <View style={{ gap: space[2] }}>
               <Text variant="caption" tone="secondary">{t('payMerchant')}</Text>
               <Text variant="title2">{info.merchant.name}</Text>
@@ -533,11 +537,11 @@ function PayScreenInner() {
                 </Text>
               ) : null}
             </View>
-          </Surface>
+          </Card>
         ) : null}
 
         {options && options.options.length > 0 ? (
-          <Surface padded={false}>{options.options.map(renderOption)}</Surface>
+          <Card padded={false}>{options.options.map(renderOption)}</Card>
         ) : null}
 
         {selected && phase !== 'done' ? (

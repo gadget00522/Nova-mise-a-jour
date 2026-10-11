@@ -1,13 +1,14 @@
 import { Pressable as KPressable } from './kit';
-import { useT } from "../lib/settingsStore";
+import { useT, useSettings } from "../lib/settingsStore";
+import { translate } from "../lib/i18n";
 /**
  * ErrorBoundary global : capture les erreurs de rendu React et les affiche à
  * l'écran (message + stack en dev) au lieu de laisser l'app se fermer.
  * Purement UI — ne touche pas au moteur crypto.
  */
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
-import { fonts } from './theme';
+import { Text, ScrollView } from 'react-native';
+import { fonts, fontSize, radii } from './theme';
 
 interface Props {
   children: React.ReactNode;
@@ -39,6 +40,21 @@ export class RootErrorBoundary extends React.Component<Props, State> {
   }
 }
 
+/**
+ * Titre de l'écran de crash. Lu hors hook (`getState`) et protégé : l'écran
+ * peut s'afficher avant le chargement des réglages, ou parce que le store
+ * lui-même a planté. Repli en anglais si quoi que ce soit échoue.
+ */
+function crashTitle(): string {
+  try {
+    const lang = useSettings.getState().language;
+    const s = lang ? translate(lang, 'crashTitle') : '';
+    return s || 'Kalyx ran into an error';
+  } catch {
+    return 'Kalyx ran into an error';
+  }
+}
+
 export function ErrorScreen({ error, onRetry }: { error: Error; onRetry?: () => void }) {
   const t = useT();
   // Couleurs volontairement EN DUR (pas de useTheme) : l'écran de crash doit
@@ -48,10 +64,10 @@ export function ErrorScreen({ error, onRetry }: { error: Error; onRetry?: () => 
       style={{ flex: 1, backgroundColor: '#07090F' }}
       contentContainerStyle={{ padding: 24, paddingTop: 72 }}
     >
-      <Text style={{ color: '#FF5C5C', fontSize: 22, fontFamily: fonts.extrabold, marginBottom: 12 }}>
-        Kalyx a rencontré une erreur
+      <Text style={{ color: '#FF5C5C', fontSize: fontSize.xxl, fontFamily: fonts.extrabold, marginBottom: 12 }}>
+        {crashTitle()}
       </Text>
-      <Text style={{ color: '#F5F7FA', fontSize: 15, marginBottom: 16 }}>
+      <Text style={{ color: '#F5F7FA', fontSize: fontSize.base, marginBottom: 16 }}>
         {error?.message || String(error)}
       </Text>
       {onRetry ? (
@@ -60,7 +76,7 @@ export function ErrorScreen({ error, onRetry }: { error: Error; onRetry?: () => 
           style={{
             alignSelf: 'flex-start',
             backgroundColor: '#7C5CFF',
-            borderRadius: 999,
+            borderRadius: radii.full,
             paddingVertical: 10,
             paddingHorizontal: 20,
             marginBottom: 20,
@@ -70,7 +86,7 @@ export function ErrorScreen({ error, onRetry }: { error: Error; onRetry?: () => 
         </KPressable>
       ) : null}
       {__DEV__ && error?.stack ? (
-        <Text selectable style={{ color: '#8A93A6', fontSize: 12, fontFamily: 'monospace' }}>
+        <Text selectable style={{ color: '#8A93A6', fontSize: fontSize.xs, fontFamily: 'monospace' }}>
           {error.stack}
         </Text>
       ) : null}

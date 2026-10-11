@@ -20,7 +20,8 @@
  * Elle appartient au navigateur d'onglets (`app/(tabs)/_layout.tsx`) et reste
  * montée d'un onglet à l'autre.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
+import { useForeground } from './useLoopActive';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { router } from 'expo-router';
@@ -32,7 +33,6 @@ import Reanimated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withRepeat,
   withSpring,
   withTiming,
@@ -40,13 +40,13 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { create } from 'zustand';
 import { useT } from '../lib/settingsStore';
+import type { Key } from '../lib/i18n';
 import { useReduceMotion } from '../lib/reduceMotion';
 import { haptic } from '../lib/haptics';
-import { durations, springs, BRAND_GOLD } from './tokens';
+import { durations, springs, BRAND_GOLD, radii, fontFamily } from './tokens';
 import { useTheme } from './theme';
 import { Icon, type IconName } from './icon';
 import { Pressable as KPressable, Text } from './kit';
-import { fontFamily } from './tokens';
 import { KalyxLogo } from './KalyxLogo';
 
 export type MainTab = 'home' | 'browser' | 'earn' | 'menu';
@@ -66,7 +66,7 @@ const ORB_LIFT = 20;
 /** Largeur de la lueur de l'onglet actif (bornée par l'emplacement). */
 const GLOW_W = 64;
 
-const TABS: { key: MainTab; icon: IconName; label: (t: (k: any) => string) => string }[] = [
+const TABS: { key: MainTab; icon: IconName; label: (t: (k: Key) => string) => string }[] = [
   { key: 'home', icon: 'home', label: (t) => t('navHome') },
   { key: 'browser', icon: 'dapps', label: (t) => t('navExplore') },
   { key: 'earn', icon: 'staking', label: (t) => t('actionEarn') },
@@ -76,7 +76,7 @@ const TABS: { key: MainTab; icon: IconName; label: (t: (k: any) => string) => st
 const slotOf = (tabIdx: number) => (tabIdx < 2 ? tabIdx : tabIdx + 1);
 
 /** Les quatre gestes de l'argent, en éventail au-dessus de l'orbe. */
-const FAN: { icon: IconName; label: (t: (k: any) => string) => string; go: () => void; tone?: 'primary' | 'gold' }[] = [
+const FAN: { icon: IconName; label: (t: (k: Key) => string) => string; go: () => void; tone?: 'primary' | 'gold' }[] = [
   { icon: 'send', label: (t) => t('actionSend'), go: () => router.push('/send'), tone: 'primary' },
   { icon: 'receive', label: (t) => t('actionReceive'), go: () => router.push('/receive') },
   { icon: 'exchange', label: (t) => t('actionSwap'), go: () => router.push('/swap') },
@@ -99,7 +99,7 @@ function NavItem({ icon, label, on }: { icon: IconName; label: string; on: boole
       <Reanimated.View style={iconStyle}>
         <Icon name={icon} size={22} color={on ? colors.text : colors.textTertiary} />
       </Reanimated.View>
-      <Text variant="micro" numberOfLines={1} style={{ fontFamily: on ? fontFamily.semibold : fontFamily.medium, fontSize: 10.5, letterSpacing: 0.1, color: on ? colors.text : colors.textTertiary }}>{label}</Text>
+      <Text variant="micro" numberOfLines={1} style={{ fontFamily: on ? fontFamily.semibold : fontFamily.medium, letterSpacing: 0.1, color: on ? colors.text : colors.textTertiary }}>{label}</Text>
     </View>
   );
 }
@@ -130,10 +130,10 @@ function FanAction({ i, open, cx, cy, label, icon, tone, onPress }: { i: number;
   return (
     <Reanimated.View style={[{ position: 'absolute', left: cx + dx - 40, top: cy + dy - 28, width: 80, alignItems: 'center' }, style]}>
       <KPressable onPress={onPress} haptic="light" accessibilityRole="button" accessibilityLabel={label} hitSlop={6} style={{ alignItems: 'center', gap: 6 }}>
-        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', borderWidth: tone === 'primary' ? 0 : 1, borderColor: tone === 'gold' ? 'rgba(221,181,101,0.5)' : 'rgba(255,255,255,0.12)' }}>
+        <View style={{ width: 56, height: 56, borderRadius: radii.full, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', borderWidth: tone === 'primary' ? 0 : 1, borderColor: tone === 'gold' ? 'rgba(221,181,101,0.5)' : 'rgba(255,255,255,0.12)' }}>
           <Icon name={icon} size={23} color={ink} />
         </View>
-        <Text variant="micro" numberOfLines={1} style={{ color: colors.text, fontFamily: fontFamily.semibold, fontSize: 11.5 }}>{label}</Text>
+        <Text variant="micro" numberOfLines={1} style={{ color: colors.text, fontFamily: fontFamily.semibold }}>{label}</Text>
       </KPressable>
     </Reanimated.View>
   );
@@ -181,15 +181,22 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
     left.value = withSpring(l, goingRight ? trail : lead);
     right.value = withSpring(r, goingRight ? lead : trail);
   }, [activeIdx, slot, glowW, reduce, left, right]);
+  /*
+   * left/width animés et non scaleX : la pilule est en position absolue (aucun
+   * voisin à remettre en page, coût négligeable), et un scaleX étirait ses bouts
+   * arrondis en ellipses — et le filet d'or avec — pendant tout le trajet.
+   */
   const glowStyle = useAnimatedStyle(() => ({ left: left.value, width: Math.max(8, right.value - left.value) }));
 
   /* ORBE : respiration lente du cercle d'or, éventail à l'appui. */
   const breath = useSharedValue(0);
+  // La barre reste à l'écran : la respiration ne s'arrête qu'en arrière-plan.
+  const foreground = useForeground();
   useEffect(() => {
-    if (reduce) return;
+    if (reduce || !foreground) return;
     breath.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }), -1, true);
     return () => cancelAnimation(breath);
-  }, [reduce, breath]);
+  }, [reduce, foreground, breath]);
   const ringStyle = useAnimatedStyle(() => ({ opacity: 0.35 + 0.35 * breath.value, transform: [{ scale: 1 + 0.06 * breath.value }] }));
 
   const open = useSharedValue(0);
@@ -200,9 +207,11 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
     open.value = reduce ? (o ? 1 : 0) : o ? withSpring(1, { damping: 15, stiffness: 140, mass: 0.9 }) : withTiming(0, { duration: 180 });
   };
   // Changer d'onglet referme l'éventail.
-  useEffect(() => {
+  const closeFan = useEffectEvent(() => {
     if (fanOpen) setFan(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    closeFan();
   }, [activeIdx]);
   const scrimStyle = useAnimatedStyle(() => ({ opacity: Math.min(1, open.value) }));
   const orbIconStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${open.value * 135}deg` }, { scale: 1 - 0.12 * Math.min(1, open.value) }] }));
@@ -262,7 +271,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
           {slot ? (
             <Reanimated.View pointerEvents="none" style={[{ position: 'absolute', top: 7, height: NAV_H - 14, borderRadius: (NAV_H - 14) / 2, backgroundColor: dark ? 'rgba(242,244,250,0.075)' : 'rgba(6,7,13,0.05)', overflow: 'hidden' }, glowStyle]}>
               {/* Filet d'or au pied de l'onglet actif. */}
-              <View style={{ position: 'absolute', bottom: 0, left: '30%', right: '30%', height: 2, borderRadius: 1, backgroundColor: GOLD }} />
+              <View style={{ position: 'absolute', bottom: 0, left: '30%', right: '30%', height: 2, borderRadius: radii.full, backgroundColor: GOLD }} />
             </Reanimated.View>
           ) : null}
           {TABS.slice(0, 2).map((it) => (
@@ -319,7 +328,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
-function TabButton({ it, active, t, onPress }: { it: (typeof TABS)[number]; active: MainTab; t: (k: any) => string; onPress: () => void }) {
+function TabButton({ it, active, t, onPress }: { it: (typeof TABS)[number]; active: MainTab; t: (k: Key) => string; onPress: () => void }) {
   return (
     <KPressable
       onPress={onPress}

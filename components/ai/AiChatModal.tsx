@@ -2,18 +2,18 @@ import { APP_ROUTES_MAP } from '../../lib/aiAppMap';
 import { SafeModal } from '../../ui/kit/SafeModal';
 import { parseProposedActions } from '../../lib/aiActions';
 import { formatDiagnosticContext } from '../../lib/diagnosticContext';
-import React, { useState, useEffect, useRef } from 'react';
-import { KeyboardAvoidingView, Platform, View, TextInput, ScrollView, Modal, FlatList } from 'react-native';
+import { useState, useEffect, useEffectEvent, useRef } from 'react';
+import { KeyboardAvoidingView, Platform, View, TextInput, ScrollView, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, IconButton, Skeleton, Chip, Pressable as KPressable } from '../../ui/kit';
-import { space, radius } from '../../ui/tokens';
+import { Text, IconButton, Chip, Pressable as KPressable } from '../../ui/kit';
+import { space, radius, fontSize, radii } from '../../ui/tokens';
 import { GOLD, IconDisc, Orbit, Pulse, Rise, TypingDots } from '../../ui/nova';
 import { useTheme } from '../../ui/theme';
 import { useAiStore } from '../../lib/aiStore';
 import { useSettings, useT, fiatSymbol } from '../../lib/settingsStore';
 import { formatFiat } from '../../src/domain/validation/format';
-import { buildAiRequestParams, mapAiErrorToMessage } from '../../lib/aiConfig';
-import { useAiChatHistoryStore } from '../../lib/aiChatHistoryStore';
+import { buildAiRequestParams, aiErrorFromHttp, aiLanguageDirective, aiLanguageName, formatAiError, withAiLanguage } from '../../lib/aiConfig';
+import { useAiChatHistoryStore, isUntitledSession } from '../../lib/aiChatHistoryStore';
 import { useGasTracker } from '../../lib/gasTrackerStore';
 import { Icon, type IconName } from '../../ui/icon';
 import { router } from 'expo-router';
@@ -32,7 +32,8 @@ import { useTicketHistoryStore } from '../../lib/ticketHistoryStore';
 import { detectSensitiveSecrets, sanitizeSecrets } from '../../lib/secretDetector';
 import { knownTxHashes } from '../../lib/knownTxHashes';
 import { kalyxDocsPrompt } from '../../lib/kalyxDocs';
-import { technicalLogger, getFormattedTechnicalLogs } from '../../lib/technicalLogger';
+import { technicalLogger } from '../../lib/technicalLogger';
+import { useShallow } from 'zustand/react/shallow';
 
 function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
   const { colors } = useTheme();
@@ -61,14 +62,14 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
     setErrorWarning(null);
     const check = detectSensitiveSecrets(normalizedTicket, knownTxHashes());
     if (check.hasSecret) {
-      setErrorWarning(check.warningMessage || t('aiSupportSecretAlert'));
+      setErrorWarning(t('secretTicketWarning'));
       return;
     }
     setIsOpening(true);
     try {
       await openTelegramTicket(normalizedTicket);
     } catch (e) {
-      setErrorWarning(e instanceof Error ? e.message : t('aiSupportOpenTelegramError'));
+      setErrorWarning(t('aiSupportOpenTelegramError'));
     } finally {
       setIsOpening(false);
     }
@@ -78,7 +79,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
     setErrorWarning(null);
     const check = detectSensitiveSecrets(normalizedTicket, knownTxHashes());
     if (check.hasSecret) {
-      setErrorWarning(check.warningMessage || t('aiSupportSecretAlert'));
+      setErrorWarning(t('secretTicketWarning'));
       return;
     }
     try {
@@ -107,7 +108,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
-          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 28, height: 28, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="telegramLogo" size={16} color={colors.primary} />
           </View>
           <View>
@@ -131,7 +132,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
           borderColor: colors.border,
         }}
       >
-        <Text variant="caption" tone="secondary" selectable style={{ fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12, lineHeight: 18 }}>
+        <Text variant="caption" tone="secondary" selectable style={{ fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: fontSize.xs, lineHeight: 18 }}>
           {normalizedTicket}
         </Text>
       </View>
@@ -151,7 +152,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
         >
           <Icon name="alert" size={16} color={colors.danger} />
           <Text variant="caption" tone="danger" style={{ flex: 1 }}>
-            {errorWarning || secretCheck.warningMessage}
+            {errorWarning || t('secretTicketWarning')}
           </Text>
         </View>
       ) : null}
@@ -175,7 +176,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
           }}
         >
           <Icon name={copied ? 'checkmark' : 'copy'} size={16} color={copied ? colors.up : colors.text} />
-          <Text variant="body" style={{ fontWeight: '600', color: copied ? colors.up : colors.text, fontSize: 13 }}>
+          <Text variant="body" style={{ fontWeight: '600', color: copied ? colors.up : colors.text, fontSize: fontSize.sm }}>
             {copied ? t('aiSupportCopied') : t('aiSupportCopy')}
           </Text>
         </KPressable>
@@ -196,7 +197,7 @@ function TicketSupportCard({ ticketContent }: { ticketContent: string }) {
           }}
         >
           <Icon name="telegramLogo" size={16} color={secretCheck.hasSecret ? colors.textTertiary : colors.onPrimary} />
-          <Text variant="body" style={{ fontWeight: '600', color: secretCheck.hasSecret ? colors.textTertiary : colors.onPrimary, fontSize: 13 }}>
+          <Text variant="body" style={{ fontWeight: '600', color: secretCheck.hasSecret ? colors.textTertiary : colors.onPrimary, fontSize: fontSize.sm }}>
             {t('aiSupportSendTelegram')}
           </Text>
         </KPressable>
@@ -209,24 +210,25 @@ export function AiChatModal({ visible, onClose, context }: { visible: boolean, o
   const { colors } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
-  const { provider, apiKey, customUrl, customModel, copilotStatus, currentSearchQuery, setCopilotStatus } = useAiStore();
-  const { profileName, language, fiat, aiToolsEnabled } = useSettings();
+  const { provider, apiKey, customUrl, customModel, copilotStatus, currentSearchQuery, setCopilotStatus } = useAiStore(useShallow((s) => ({ provider: s.provider, apiKey: s.apiKey, customUrl: s.customUrl, customModel: s.customModel, copilotStatus: s.copilotStatus, currentSearchQuery: s.currentSearchQuery, setCopilotStatus: s.setCopilotStatus })));
+  const { profileName, language, fiat, aiToolsEnabled } = useSettings(useShallow((s) => ({ profileName: s.profileName, language: s.language, fiat: s.fiat, aiToolsEnabled: s.aiToolsEnabled })));
   const activeChain = useWallet((s) => s.activeChain);
   const accounts = useWallet((s) => s.accounts);
   const activeAccountIndex = useWallet((s) => s.activeAccountIndex);
-  const { ethGas, fetchGas } = useGasTracker();
+  const { ethGas, fetchGas } = useGasTracker(useShallow((s) => ({ ethGas: s.ethGas, fetchGas: s.fetchGas })));
   // Les frais sont exprimés dans la devise de l'utilisateur, pas en dollars.
-  useEffect(() => { if (visible) fetchGas(fiat); }, [visible, fiat]);
+  useEffect(() => { if (visible) fetchGas(fiat); }, [visible, fiat, fetchGas]);
   
-  const { sessions, activeSessionId, createNewSession, setActiveSession, addMessageToActive, deleteSession } = useAiChatHistoryStore();
+  const { sessions, activeSessionId, createNewSession, setActiveSession, addMessageToActive, deleteSession } = useAiChatHistoryStore(useShallow((s) => ({ sessions: s.sessions, activeSessionId: s.activeSessionId, createNewSession: s.createNewSession, setActiveSession: s.setActiveSession, addMessageToActive: s.addMessageToActive, deleteSession: s.deleteSession })));
   
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const initialPrompt = useAiStore((s) => s.initialPrompt);
+  const sendInitialPrompt = useEffectEvent((prompt: string) => sendMessage(prompt));
   useEffect(() => {
     if (visible && initialPrompt) {
        setInput(initialPrompt);
-       setTimeout(() => sendMessage(initialPrompt), 200);
+       setTimeout(() => sendInitialPrompt(initialPrompt), 200);
        useAiStore.getState().closeChat();
        useAiStore.setState({ initialPrompt: null });
     }
@@ -258,7 +260,7 @@ export function AiChatModal({ visible, onClose, context }: { visible: boolean, o
     if (visible && !activeSessionId) {
       createNewSession();
     }
-  }, [visible, activeSessionId]);
+  }, [visible, activeSessionId, createNewSession]);
 
   // Accueil (session vide) : rendu au CENTRE, pas de bulle injectée dans l'historique.
   const greeting =
@@ -274,11 +276,11 @@ export function AiChatModal({ visible, onClose, context }: { visible: boolean, o
 
 CONTEXTE UTILISATEUR :
 - Prénom : ${profileName || "l'utilisateur"}
-- Langue de l'application : ${language || 'fr'}
+- Langue de l'utilisateur : ${aiLanguageName(language)}
 - Réseau actif actuel : ${currentNetworkName}
 
 CONSIGNES DE COMMUNICATION :
-1. Réponds STRICTEMENT dans la langue de l'application (${language || 'fr'}).
+1. Réponds STRICTEMENT en ${aiLanguageName(language)}, la langue de l'utilisateur — même si ces consignes, la documentation ou les exemples ci-dessous sont en français.
 2. Sois direct, factuel et concis : 2 à 3 phrases percutantes par réponse maximum.
 3. Supprime tout ton surjoué, formules creuses de service client ou surabondance d'emojis. Parle comme un développeur / expert crypto sobre.
 4. Ne demande JAMAIS l'adresse ou les soldes : tu as déjà accès à ses données publiques dans le contexte ci-dessous.
@@ -397,13 +399,13 @@ une source externe.`}`;
      * la langue de l'utilisateur. Cherchée ICI avec la question, et jointe :
      * marche avec tous les fournisseurs, sans outil, sans appel ni coût.
      */
-    const docsBlock = kalyxDocsPrompt(question, (language || 'fr') as never);
+    const docsBlock = kalyxDocsPrompt(question, (language || 'en') as never);
 
     if (ctx.screen === 'browser') {
       return `${base}${docsBlock}\n\nNAVIGATION ACTIVE (dApp) :\n- URL : ${ctx.url || 'Page vierge'}\n- Titre : ${ctx.title || 'Inconnu'}\n\nVérifie la réputation de l'URL, préviens contre le phishing et réponds aux questions sur la dApp.`;
     }
     if (ctx.screen === 'wallet') {
-      return `${base}${docsBlock}\n\nDONNÉES DU PORTEFEUILLE :\n- Valeur totale : ${ctx.totalUsd} $\n- Actifs détenus : \n${ctx.tokensSummary?.length ? ctx.tokensSummary.join('\n') : 'Aucun token'}\n\nPERFORMANCES ET P&L (24h) :\n- Variation 24h : ${ctx.pnl24h !== undefined ? (ctx.pnl24h >= 0 ? '+' : '') + ctx.pnl24h.toFixed(2) + ' $ (' + (ctx.pnl24hPct >= 0 ? '+' : '') + ctx.pnl24hPct.toFixed(2) + ' %)' : 'Inconnue'}\n- Meilleur performer : ${ctx.topGainer || 'Aucun'}\n- Pire performer : ${ctx.topLoser || 'Aucun'}\nLORSQUE l'utilisateur demande un bilan ou ses performances, réponds en 2 à 3 phrases percutantes sans jargon lourd (ex: 'Sur les dernières 24h, ton portefeuille est à +5.2% (+0.08 $), principalement porté par ta position BTC.').\n\nSAUVEGARDE ET SÉCURITÉ :\n- Sauvegarde cloud active : ${ctx.hasCloudBackup ? 'OUI' : 'NON'}\n- Approbations actives : ${ctx.activeApprovalsCount || 0}\n\nRéponds directement aux questions sur la gestion, la sécurité ou la répartition de ces fonds.`;
+      return `${base}${docsBlock}\n\nDONNÉES DU PORTEFEUILLE :\n- Valeur totale : ${ctx.totalUsd} $\n- Actifs détenus : \n${ctx.tokensSummary?.length ? ctx.tokensSummary.join('\n') : 'Aucun token'}\n\nPERFORMANCES ET P&L (24h) :\n- Variation 24h : ${ctx.pnl24h !== undefined ? (ctx.pnl24h >= 0 ? '+' : '') + ctx.pnl24h.toFixed(2) + ' $ (' + (ctx.pnl24hPct >= 0 ? '+' : '') + ctx.pnl24hPct.toFixed(2) + ' %)' : 'Inconnue'}\n- Meilleur performer : ${ctx.topGainer || 'Aucun'}\n- Pire performer : ${ctx.topLoser || 'Aucun'}\nLORSQUE l'utilisateur demande un bilan ou ses performances, réponds en 2 à 3 phrases percutantes sans jargon lourd, dans la langue de l'utilisateur (exemple de ton, à ne pas recopier en français : 'Sur les dernières 24h, ton portefeuille est à +5.2% (+0.08 $), principalement porté par ta position BTC.').\n\nSAUVEGARDE ET SÉCURITÉ :\n- Sauvegarde cloud active : ${ctx.hasCloudBackup ? 'OUI' : 'NON'}\n- Approbations actives : ${ctx.activeApprovalsCount || 0}\n\nRéponds directement aux questions sur la gestion, la sécurité ou la répartition de ces fonds.`;
     }
     return base + docsBlock;
   }
@@ -468,7 +470,7 @@ une source externe.`}`;
           console.warn('[CopilotContext] Échec de la consultation on-chain:', error instanceof Error ? error.message : 'erreur inconnue');
         }
       }
-      const SYSTEM_PROMPT = buildSystemPrompt(context, msgToSend);
+      const SYSTEM_PROMPT = withAiLanguage(buildSystemPrompt(context, msgToSend), language);
       copilotLog(traceId, 'context.ready', { systemPromptChars: SYSTEM_PROMPT.length, historyMessages: messages.length });
       
       /*
@@ -520,7 +522,8 @@ une source externe.`}`;
       const tooLarge = res.status === 413 || (res.status === 400 && /context|too large|too long|maximum|tokens/i.test(JSON.stringify(data).slice(0, 600)));
       if (tooLarge) {
         copilotLog(traceId, 'request.too_large.retry', { status: res.status, systemPromptChars: SYSTEM_PROMPT.length });
-        const compactSystem = SYSTEM_PROMPT.slice(0, 9000);
+        // La coupe retire la fin du prompt : la consigne de langue repart en tête.
+        const compactSystem = `${aiLanguageDirective(language)}\n\n${SYSTEM_PROMPT.slice(0, 9000)}`;
         const compactMessages = toApi(messages, 4);
         body = provider === 'anthropic'
           ? { ...body, system: compactSystem, messages: compactMessages }
@@ -562,12 +565,13 @@ une source externe.`}`;
       let rawReply = '';
       if (!res.ok) {
          const providerMsg = data?.error?.message || data?.message || '';
-         const customMsg = res.status === 429
-           ? 'Kalyx est très sollicité, réessaie dans quelques secondes.'
-           : typeof mapAiErrorToMessage === 'function' ? mapAiErrorToMessage(res.status) : 'Erreur IA';
+         // Le 429 a déjà eu sa nouvelle tentative (requestAi) : message d'attente
+         // dédié. Sinon, code d'erreur traduit avec t(), puis le message brut du
+         // fournisseur en diagnostic (non traduit : c'est le sien).
+         const customMsg = res.status === 429 ? t('aiErrorRateLimit') : formatAiError(t, aiErrorFromHttp(res.status));
          rawReply = res.status === 429
            ? customMsg
-           : `${customMsg}\n\n*(Provider: ${providerMsg || res.statusText || 'Erreur interne'})*`;
+           : `${customMsg}\n\n*(${t('aiErrorProviderDetail').replace('{detail}', providerMsg || res.statusText || t('aiErrorInternal'))})*`;
       } else {
          setCopilotStatus('generating');
          rawReply = provider === 'anthropic' ? data.content?.[0]?.text : data.choices?.[0]?.message?.content;
@@ -609,7 +613,7 @@ une source externe.`}`;
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <KPressable noScale haptic="none" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} accessibilityLabel={t('aiClose')} />
         <View style={{ height: '90%', backgroundColor: colors.bg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderWidth: 1, borderBottomWidth: 0, borderColor: colors.border, overflow: 'hidden' }}>
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.surface3, marginTop: space[2] }} />
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: radii.full, backgroundColor: colors.surface3, marginTop: space[2] }} />
           {/* En-tête : l'étoile d'or, le nom, et un point qui dit que l'assistant est là. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[1], paddingHorizontal: space[3], paddingTop: space[2], paddingBottom: space[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space[3], paddingLeft: space[1] }}>
@@ -636,7 +640,7 @@ une source externe.`}`;
               ListEmptyComponent={<Text variant="bodySecondary" tone="secondary">{t('aiNoChats')}</Text>}
               renderItem={({ item }) => (
                 <KPressable onPress={() => { setActiveSession(item.id); setShowHistory(false); }} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, gap: space[2], borderRadius: radius.input, paddingHorizontal: space[2], backgroundColor: item.id === activeSessionId ? colors.surface3 : 'transparent' }}>
-                  <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>{item.title}</Text>
+                  <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>{isUntitledSession(item.title) ? t('copilotNewChat') : item.title}</Text>
                   <KPressable onPress={() => deleteSession(item.id)} hitSlop={8} accessibilityLabel={t('aiDelete')}><Icon name="close" size={14} tone="faint" /></KPressable>
                 </KPressable>
               )}
@@ -670,7 +674,7 @@ une source externe.`}`;
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[2], marginTop: space[3], width: '100%' }}>
                     {SUGGESTIONS.map((sg, i) => (
                       <Rise key={sg.label} delay={120 + i * 60} style={{ width: '48.5%' }}>
-                        <KPressable onPress={() => sendMessage(sg.label)} haptic="light" accessibilityLabel={sg.label} style={{ minHeight: 92, padding: space[3], gap: space[2], borderRadius: 20, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border }}>
+                        <KPressable onPress={() => sendMessage(sg.label)} haptic="light" accessibilityLabel={sg.label} style={{ minHeight: 92, padding: space[3], gap: space[2], borderRadius: radii.lg, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border }}>
                           <IconDisc name={sg.icon} size={32} />
                           <Text variant="caption" numberOfLines={3}>{sg.label}</Text>
                         </KPressable>
@@ -711,7 +715,7 @@ une source externe.`}`;
                               borderColor: colors.border,
                               paddingHorizontal: space[3],
                               paddingVertical: space[2],
-                              borderRadius: 20,
+                              borderRadius: radii.lg,
                               borderBottomRightRadius: mine ? 6 : 20,
                               borderBottomLeftRadius: mine ? 20 : 6,
                             }}
@@ -720,7 +724,7 @@ une source externe.`}`;
                               variant="bodySecondary"
                               style={{
                                 color: mine ? colors.onPrimary : colors.text,
-                                fontSize: 15,
+                                fontSize: fontSize.base,
                                 lineHeight: 20,
                               }}
                               selectable
@@ -767,7 +771,7 @@ une source externe.`}`;
                     );
                   })}
                   {loading ? (
-                    <View style={{ alignSelf: 'flex-start', maxWidth: '80%', gap: space[2], padding: space[3], backgroundColor: colors.surface1, borderRadius: 20, borderBottomLeftRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ alignSelf: 'flex-start', maxWidth: '80%', gap: space[2], padding: space[3], backgroundColor: colors.surface1, borderRadius: radii.lg, borderBottomLeftRadius: radii.xs, borderWidth: 1, borderColor: colors.border }}>
                       <TypingDots />
                       <Text variant="caption" tone="secondary">
                         {copilotStatus === 'searching_web' ? t('aiStatusWebSearch').replace('{query}', currentSearchQuery ?? '') : copilotStatus === 'analyzing_sources' ? t('aiStatusReadingSources') : copilotStatus === 'generating' ? t('aiStatusWriting') : t('aiStatusThinking')}
@@ -785,7 +789,7 @@ une source externe.`}`;
                   </ScrollView>
                 ) : null}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
-                  <View style={{ flex: 1, minHeight: 50, borderRadius: 25, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space[4], justifyContent: 'center' }}>
+                  <View style={{ flex: 1, minHeight: 50, borderRadius: radii.xl, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space[4], justifyContent: 'center' }}>
                     <TextInput
                       value={input}
                       onChangeText={setInput}
@@ -794,10 +798,10 @@ une source externe.`}`;
                       placeholderTextColor={colors.textTertiary}
                       returnKeyType="send"
                       multiline
-                      style={{ color: colors.text, fontSize: 15, lineHeight: 20, fontFamily: 'GeneralSans-Medium', paddingVertical: 12, maxHeight: 100 }}
+                      style={{ color: colors.text, fontSize: fontSize.base, lineHeight: 20, fontFamily: 'GeneralSans-Medium', paddingVertical: 12, maxHeight: 100 }}
                     />
                   </View>
-                  <KPressable onPress={() => sendMessage()} disabled={!input.trim() || loading} accessibilityLabel={t('aiSend')} style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: !input.trim() || loading ? 0.4 : 1 }}>
+                  <KPressable onPress={() => sendMessage()} disabled={!input.trim() || loading} accessibilityLabel={t('aiSend')} style={{ width: 50, height: 50, borderRadius: radii.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: !input.trim() || loading ? 0.4 : 1 }}>
                     <Icon name="send" size={20} color={colors.onPrimary} />
                   </KPressable>
                 </View>

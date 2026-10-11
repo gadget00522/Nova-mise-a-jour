@@ -6,8 +6,10 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Text, Surface, Divider, TokenIcon, Pressable } from './kit';
+import { Text, Divider, TokenIcon, Pressable, Card } from './kit';
 import { space } from './tokens';
+import { Icon } from './icon';
+import { useTheme } from './theme';
 import { useSettings, useT, fiatSymbol } from '../lib/settingsStore';
 import { getMarkets, sortMarkets, formatFiat, type MarketCoin } from '../src';
 
@@ -23,6 +25,7 @@ export async function loadMarkets(fiat: string): Promise<MarketCoin[]> {
 
 export function MarketPanel() {
   const t = useT();
+  const { colors } = useTheme();
   const fiat = useSettings((s) => s.fiat);
   const [coins, setCoins] = useState<MarketCoin[]>([]);
 
@@ -47,7 +50,7 @@ export function MarketPanel() {
           <Text variant="caption" tone="secondary">{t('seeAllMarket')}</Text>
         </Pressable>
       </View>
-      <Surface padded={false}>
+      <Card padded={false}>
         {rows.map((m, i) => (
           <React.Fragment key={m.id}>
             <Pressable noScale onPress={() => router.push(`/token/${m.id}`)}>
@@ -61,17 +64,20 @@ export function MarketPanel() {
                   <Text variant="body" tabular>
                     {formatFiat(m.price, m.price >= 100 ? 0 : 2)} {fiatSymbol(fiat)}
                   </Text>
-                  <Text variant="caption" tone={m.change24h >= 0 ? 'up' : 'down'} tabular>
-                    {m.change24h >= 0 ? '↑ +' : '↓ '}
-                    {m.change24h.toFixed(1)} %
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Icon name={m.change24h >= 0 ? 'trendUp' : 'trendDown'} size={14} color={m.change24h >= 0 ? colors.up : colors.down} />
+                    <Text variant="caption" tone={m.change24h >= 0 ? 'up' : 'down'} tabular>
+                      {m.change24h >= 0 ? '+' : '−'}
+                      {Math.abs(m.change24h).toFixed(1)} %
+                    </Text>
+                  </View>
                 </View>
               </View>
             </Pressable>
             {i < rows.length - 1 ? <Divider inset={60} /> : null}
           </React.Fragment>
         ))}
-      </Surface>
+      </Card>
     </View>
   );
 }

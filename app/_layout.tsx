@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { attachPriceCacheStorage } from '../src';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { JournalProbe } from '../ui/JournalProbe';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, router, usePathname } from 'expo-router';
@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { FloatingAiAssistant } from '../components/ai/FloatingAiAssistant';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useWallet } from '../lib/walletStore';
 import { useAuraBinding } from '../lib/auraBinding';
 import { useOta } from '../lib/ota';
@@ -36,7 +37,7 @@ import { useRecentRecipients } from '../lib/recentRecipientsStore';
 import { useTokenPrefs } from '../lib/tokenPrefsStore';
 import { DeepLinks } from '../ui/DeepLinks';
 import { Splash } from '../ui/Splash';
-import { useTheme } from '../ui/theme';
+import { useTheme, fontSize, radii } from '../ui/theme';
 
 console.log('[Kalyx] _layout.tsx chargé');
 
@@ -157,7 +158,7 @@ export default function RootLayout() {
     // Empêche la traduction auto du navigateur (Google Traduction réécrit les
     // nœuds texte et casse React : « Failed to execute removeChild »).
     const el = doc.documentElement as unknown as { setAttribute: (k: string, v: string) => void; lang: string };
-    el.lang = 'fr';
+    el.lang = useSettings.getState().language || 'en';
     el.setAttribute('translate', 'no');
     // Le CSS de +html.tsx est ignoré par l'export web (`output: 'single'`) : on
     // l'injecte donc au runtime. Objectifs : (1) plus AUCUN débordement/scroll
@@ -236,7 +237,7 @@ export default function RootLayout() {
         console.error('[Kalyx] WalletConnect init a échoué :', e);
       }
     })();
-  }, [bootstrap, loadSettings, loadCustomTokens, loadContacts, loadNotifs, loadCustomChains, loadPriceAlerts, loadRecents, loadTokenPrefs, initWalletConnect, loadAiState]);
+  }, [bootstrap, loadSettings, loadCustomTokens, loadContacts, loadNotifs, loadCustomChains, loadPriceAlerts, loadRecents, loadTokenPrefs, initWalletConnect, loadAiState, loadPendingBtc, loadDriveFlow]);
 
   if (!fontsLoaded) return null;
 
@@ -245,17 +246,20 @@ export default function RootLayout() {
   if (Platform.OS === 'web') {
     return (
       <RootErrorBoundary>
-        <SafeAreaProvider>
-          <StatusBar style="light" />
-          <WebDashboard />
-          <ToastHost />
-    </SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <StatusBar style="light" />
+            <WebDashboard />
+            <ToastHost />
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
       </RootErrorBoundary>
     );
   }
 
   return (
     <RootErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         {/* Icônes de statut claires sur thème sombre, et inversement. */}
         <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -321,9 +325,9 @@ export default function RootLayout() {
         <FloatingAiAssistant />
         {bootError && !storeReady ? (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg, zIndex: 101, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }]}>
-            <Text style={{ color: colors.text, fontSize: 16, textAlign: 'center' }}>{t('bootFailed')}</Text>
-            <Pressable onPress={retryBoot} accessibilityRole="button" style={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: 999, backgroundColor: colors.primary }}>
-              <Text style={{ color: colors.onPrimary, fontSize: 15 }}>{t('retry')}</Text>
+            <Text style={{ color: colors.text, fontSize: fontSize.lg, textAlign: 'center' }}>{t('bootFailed')}</Text>
+            <Pressable onPress={retryBoot} accessibilityRole="button" style={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: radii.full, backgroundColor: colors.primary }}>
+              <Text style={{ color: colors.onPrimary, fontSize: fontSize.base }}>{t('retry')}</Text>
             </Pressable>
           </View>
         ) : opening === 'wait' ? (
@@ -346,6 +350,7 @@ export default function RootLayout() {
         ) : null}
         </View>
       </SafeAreaProvider>
+      </GestureHandlerRootView>
     </RootErrorBoundary>
   );
 }

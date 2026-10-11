@@ -20,24 +20,24 @@ import { randomBytes } from '@noble/hashes/utils';
 import { signMessageParam } from '../../lib/dappProvider';
 import { buildTonJsBridge, parseTcJsMessage } from '../../src/domain/tonconnect/jsBridge';
 import { useTonConnect, tcJsHost, tcDeviceInfo } from '../../lib/tonconnect/store';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { fill } from '../../lib/i18n';
-import { View, TextInput, ScrollView, Share, Alert, Switch, Image, useWindowDimensions, Linking } from 'react-native';
+import { View, TextInput, ScrollView, Share, Alert, useWindowDimensions, Linking } from 'react-native';
 import { Stack, useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
-import { Text, Button, IconButton, Surface, Divider, ListRow, Sheet, Chip, EmptyState, AddressGlyph, Input, Pressable, Pressable as KPressable } from '../../ui/kit';
+import { Text, Button, IconButton, Divider, ListRow, Sheet, Chip, EmptyState, Input, Pressable as KPressable, Card, RemoteIcon, Switch, Checkbox } from '../../ui/kit';
 import { Icon } from '../../ui/icon';
 import { SignSheet } from '../../ui/SignSheet';
 import { ConfirmUnlock } from '../../ui/ConfirmUnlock';
 import { AddressBar, splitHost } from '../../ui/browser/AddressBar';
 import { useTabBar } from '../../ui/tabs';
-import { RemoteIcon } from '../../ui/premium';
 import { Comet } from '../../ui/browser/Comet';
+import { createTicker, useTicker } from '../../lib/ticker';
 import { DappTile, DappLogo, siteName } from '../../ui/browser/DappTile';
 import { useTheme } from '../../ui/theme';
-import { space, SCREEN_MARGIN, radius, springs } from '../../ui/tokens';
+import { space, SCREEN_MARGIN, radius, radii, springs, fontSize } from '../../ui/tokens';
 import { Orbit, Rise, TextTabs } from '../../ui/nova';
 import { haptic } from '../../lib/haptics';
 import { sound } from '../../lib/sound';
@@ -49,7 +49,6 @@ import { loadRecents, pushRecent, clearRecents, loadFavorites, toggleFavorite, t
 import { useDappActivity } from '../../lib/dappActivity';
 import { technicalLogger } from '../../lib/technicalLogger';
 import { useBrowserStore } from '../../lib/browserStore';
-import { usePortfolioStore } from '../../lib/portfolio';
 import { saveTabs, loadTabs } from '../../lib/browserTabs';
 import { useBrowserPresence } from '../../lib/browserPresence';
 import { useWalletConnect } from '../../lib/walletconnect';
@@ -57,8 +56,24 @@ import { looksLikeTonConnect } from '../../src/domain/tonconnect/connectLink';
 import { loadBrowserPrefs, saveEngine, saveForceDark, ENGINES, VERIFIED_DAPPS, type SearchEngine } from '../../lib/browserPrefs';
 import { buildInjectedProvider, parseDappMessage, respondJs, emitJs, rpcProxy, READONLY_METHODS, type DappRequest } from '../../lib/dappProvider';
 import {
-  getAdapter, formatTokenAmount, listChains, hexToText, parseSiwe, siweDomainMismatch, summarizeTypedData, assessAddress, isPhishingSite,
-  decodeTx, simulateTx, explainRequest, getTokenMetadata, chainIconUrl, isValidEvmAddress, type RawTxRequest, type RiskAssessment, type Simulation,
+  getAdapter,
+  formatTokenAmount,
+  listChains,
+  hexToText,
+  parseSiwe,
+  siweDomainMismatch,
+  summarizeTypedData,
+  assessAddress,
+  isPhishingSite,
+  decodeTx,
+  simulateTx,
+  explainRequest,
+  getTokenMetadata,
+  chainIconUrl,
+  isValidEvmAddress,
+  type RawTxRequest,
+  type RiskAssessment,
+  type Simulation
 } from '../../src';
 import { useHistoryStore } from '../../lib/historyStore';
 import { useKeyboardHeight } from '../../ui/useKeyboardHeight';
@@ -130,12 +145,17 @@ function normalizeUrl(raw?: string | null): string | null {
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15';
 
 /** 128 bits aléatoires (générateur sécurisé), en hexadécimal. */
+const isLoadingProgress = (v: number) => v > 0 && v < 1;
+
+const connKey = (origin: string, incognito?: boolean) => (incognito ? `incognito:${origin}` : origin);
+
 function bytesToHexToken(): string {
   return Array.from(randomBytes(16), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export default function Browser() {
   const t = useT();
+  const language = useSettings((s) => s.language);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const kbHeight = useKeyboardHeight();
@@ -158,7 +178,6 @@ export default function Browser() {
   const dappEpoch = useDappActivity((s) => s.epoch);
   const activeChain = useWallet((s) => s.activeChain);
   const setActiveChain = useWallet((s) => s.setActiveChain);
-  const biometricEnabled = useSettings((s) => s.biometricEnabled);
   const showTestnets = useSettings((s) => s.showTestnets);
   // Explications de signature dans la langue choisie (elles étaient en français pour tous).
   const exT = useExplainT();
@@ -189,7 +208,9 @@ export default function Browser() {
   const chain = getAdapter(activeTab?.chainId ?? activeChain).config;
   const chainIdHex = '0x' + (chain.evmChainId ?? 1).toString(16);
 
-  const [progress, setProgress] = useState(0);
+  // Progression hors état React : la comète s'y abonne, l'écran ne suit que « en cours ou non ».
+  const [progress] = useState(() => createTicker(0));
+  const pageLoading = useTicker(progress, isLoadingProgress);
   const [webError, setWebError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState('');
@@ -205,7 +226,6 @@ export default function Browser() {
   const [findSheet, setFindSheet] = useState(false);
   const [findQ, setFindQ] = useState('');
   const [netQ, setNetQ] = useState('');
-  const pfHoldings = usePortfolioStore((st) => st.holdings);
   const [engine, setEngine] = useState<SearchEngine>('google');
   const [forceDark, setForceDark] = useState(false);
   const [category, setCategory] = useState(VERIFIED_DAPPS[0].category);
@@ -236,7 +256,7 @@ export default function Browser() {
   }, [compact]);
   const chromeStyle = useAnimatedStyle(() => ({ opacity: 1 - compact.value * 0.15 }));
 
-  useEffect(() => {
+  const restoreSession = useEffectEvent(() => {
     loadRecents().then(applyRecents);
     loadFavorites().then(applyFav);
     loadActivity();
@@ -247,18 +267,20 @@ export default function Browser() {
       setTabs(restored);
       setActiveId(restored.some((t) => t.id === saved.activeId) ? saved.activeId : restored[0].id);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    restoreSession();
   }, []);
   useEffect(() => {
     const h = setTimeout(() => saveTabs(tabs.filter((t) => !t.incognito).map((t) => ({ id: t.id, url: t.url, title: t.title, chainId: t.chainId })), activeId), 500);
     return () => clearTimeout(h);
   }, [tabs, activeId]);
   useEffect(() => {
-    setProgress(0);
+    progress.set(0);
     setWebError(null);
     compact.value = 0;
     lastY.current = 0;
-  }, [activeId, compact]);
+  }, [activeId, compact, progress]);
 
   // Deep-link : /browser?url=…
   const { url: urlParam } = useLocalSearchParams<{ url?: string }>();
@@ -268,17 +290,16 @@ export default function Browser() {
     useTabBar.getState().setHidden(!showTabBar);
     return () => useTabBar.getState().setHidden(false);
   }, [showTabBar]));
+  const openDeepLink = useEffectEvent((u: string) => updateTab(activeRef.current, { url: u }));
   useEffect(() => {
     const u = urlParam ? normalizeUrl(String(urlParam)) : null;
-    if (u) updateTab(activeRef.current, { url: u });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (u) openDeepLink(u);
   }, [urlParam]);
 
   // Site dangereux (GoPlus) — vérifié une fois par hôte.
   useEffect(() => {
-    if (!origin || origin in dangerHosts || !useSettings.getState().securityScan) return;
+    if (!origin || origin in dangerHostsRef.current || !useSettings.getState().securityScan) return;
     isPhishingSite(`https://${origin}`).then((bad) => { setDangerHosts((d) => ({ ...d, [origin]: bad })); if (bad) haptic.warning(); }).catch(() => setDangerHosts((d) => ({ ...d, [origin]: false })));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin]);
   const danger = !!origin && (dangerHosts[origin] === true || isLookalike(origin));
   // Site signalé : la page n'est même pas chargée (aucun script exécuté) tant que l'utilisateur ne passe pas outre.
@@ -347,7 +368,7 @@ export default function Browser() {
       return false;
     }
     return false;
-  }, []);
+  }, [t]);
 
   // ── Pont EIP-1193 ──
   const connected = useRef<Set<string>>(new Set());
@@ -356,7 +377,6 @@ export default function Browser() {
    * clé commune, un site connecté dans un onglet normal voyait le compte dans
    * l'onglet privé (et inversement), sans rien demander.
    */
-  const connKey = (origin: string, incognito?: boolean) => (incognito ? `incognito:${origin}` : origin);
   const [pending, setPendingState] = useState<Pending | null>(null);
   /** Changement de réseau demandé par un site : il touche TOUTE l'app, donc il se confirme. */
   const [switchReq, setSwitchReq] = useState<{ tabId: string; id: number; origin: string; targetId: string; want: number } | null>(null);
@@ -383,7 +403,6 @@ export default function Browser() {
   const [risk, setRisk] = useState<RiskAssessment | 'loading' | null>(null);
   const [phishSite, setPhishSite] = useState(false);
   const [rememberSite, setRememberSite] = useState(false);
-  const [connectLine, setConnectLine] = useState(0); // 0..1 : trait de lumière logo → glyphe
   // Fournisseur EVM + pont TON Connect (le site TON demande la connexion directement au wallet).
   // Jeton de page, tiré une fois : seuls les scripts injectés dans la page principale le connaissent.
   const pageToken = useMemo(() => bytesToHexToken(), []);
@@ -459,7 +478,7 @@ export default function Browser() {
       const isConnected = !!reqOrigin && connected.current.has(connKey(reqOrigin, tb?.incognito));
       /** Une demande attend déjà la décision de l'utilisateur : celle-ci est refusée tout de suite (EIP-1193, -32002). */
       const openPending = (p: Pending) => {
-        if (pendingRef.current) return respond(id, null, { code: -32002, message: 'Request already pending. Please wait.' });
+        if (pendingRef.current) return respond(id, null, { code: -32002, message: t('dappErrRequestPending') });
         setPending(p);
       };
       try {
@@ -471,7 +490,7 @@ export default function Browser() {
          * aucune connexion ni signature.
          */
         if (!reqOrigin && !READONLY_METHODS.has(method) && method !== 'net_version' && method !== 'eth_accounts' && method !== 'wallet_getPermissions') {
-          return respond(id, null, { code: 4100, message: 'Wallet access requires an https page' });
+          return respond(id, null, { code: 4100, message: t('dappErrHttpsRequired') });
         }
         if (method === 'net_version') return respond(id, String(chain.evmChainId ?? 1));
         if (method === 'eth_accounts') return respond(id, isConnected && addr ? [addr] : []);
@@ -507,7 +526,7 @@ export default function Browser() {
            * envoi suivant pouvait partir sur un réseau que l'utilisateur
            * n'avait pas choisi.
            */
-          if (switchReqRef.current) return respond(id, null, { code: -32002, message: 'Request already pending. Please wait.' });
+          if (switchReqRef.current) return respond(id, null, { code: -32002, message: t('dappErrRequestPending') });
           const req = { tabId, id, origin: reqOrigin, targetId: target.id, want };
           switchReqRef.current = req;
           setSwitchReq(req);
@@ -526,14 +545,14 @@ export default function Browser() {
             const rawData = params[1];
             const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
             // Réseau de la DEMANDE, figé maintenant : onglet non EVM → refus (le contrôle anti-rejeu serait sauté).
-            if (!chain.evmChainId) return respond(id, null, { code: 4901, message: 'Switch to an EVM network to sign this message' });
+            if (!chain.evmChainId) return respond(id, null, { code: 4901, message: t('dappErrSwitchToEvm') });
             openPending({ kind: 'typedData', tabId, id, origin: reqOrigin, data, summary: summarizeTypedData(data), evmChainId: chain.evmChainId });
             return;
           }
           const tx = (params[0] ?? {}) as { from?: string; to?: string; value?: string; data?: string; gas?: string };
-          if (!tx.to || !isValidEvmAddress(tx.to)) return respond(id, null, { code: 4200, message: 'Contract deployment is not supported' });
+          if (!tx.to || !isValidEvmAddress(tx.to)) return respond(id, null, { code: 4200, message: t('dappErrNoContractDeploy') });
           // Transaction préparée pour un AUTRE compte (changé depuis la connexion) : on ne la signe pas avec celui-ci.
-          if (tx.from && tx.from.toLowerCase() !== addr.toLowerCase()) return respond(id, null, { code: 4100, message: 'The requested account is not the active account' });
+          if (tx.from && tx.from.toLowerCase() !== addr.toLowerCase()) return respond(id, null, { code: 4100, message: t('dappErrWrongAccount') });
           const raw: RawTxRequest = { to: tx.to, data: tx.data ?? '0x', value: tx.value ? BigInt(tx.value) : 0n, chainId: chain.evmChainId!, gasLimit: tx.gas ? BigInt(tx.gas) : undefined };
           openPending({ kind: 'tx', tabId, id, origin: reqOrigin, to: tx.to, value: raw.value ?? 0n, raw, chainId: chain.id });
           return;
@@ -544,12 +563,12 @@ export default function Browser() {
         respond(id, null, { code: -32603, message: e instanceof Error ? e.message.slice(0, 160) : t('internalError') });
       }
     },
-    [evmAddress, watchOnly, chain, chainIdHex, respond, inject, setActiveChain], // eslint-disable-line react-hooks/exhaustive-deps
+    [evmAddress, watchOnly, chain, chainIdHex, respond, inject, activeChain, setPending, t],
   );
 
   // Analyse GoPlus + simulation à l'apparition d'une demande.
-  useEffect(() => {
-    setRisk(null); setPhishSite(false); setSim(null); setSignConfirm(false); setConnectLine(0); setPermitToken(null);
+  const analyzePending = useEffectEvent((isAlive: () => boolean) => {
+    setRisk(null); setPhishSite(false); setSim(null); setSignConfirm(false); setPermitToken(null);
     if (!pending) return;
     if (pending.kind === 'typedData' && pending.summary?.token) {
       const addr = pending.summary.token;
@@ -566,18 +585,21 @@ export default function Browser() {
       else if (pending.kind === 'connect') { isPhishingSite(`https://${pending.origin}`).then((r) => { setPhishSite(r); if (r) haptic.warning(); }).catch(() => {}); }
     }
     if (pending.kind === 'tx' && evmAddress) {
-      let alive = true;
       setSim('loading');
       (async () => {
         const d = decodeTx({ to: pending.raw.to, value: pending.raw.value, data: pending.raw.data });
         const meta = d.kind === 'transfer' || d.kind === 'approve' ? await getTokenMetadata(chain, d.token).catch(() => null) : null;
         const r = await simulateTx(chain, { from: evmAddress, to: pending.raw.to, value: pending.raw.value, data: pending.raw.data }, meta ? { symbol: meta.symbol, decimals: meta.decimals } : undefined);
-        if (alive) setSim(r);
+        if (isAlive()) setSim(r);
       })();
-      return () => { alive = false; };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending?.id]);
+  });
+  const pendingId = pending?.id;
+  useEffect(() => {
+    let alive = true;
+    analyzePending(() => alive);
+    return () => { alive = false; };
+  }, [pendingId]);
 
   const explanation = useMemo(() => {
     if (!pending || pending.kind === 'connect') return null;
@@ -586,8 +608,7 @@ export default function Browser() {
     if (pending.kind === 'typedData') return explainRequest({ kind: 'typedData', domain: pending.origin, typed: pending.summary, tokenSymbol: permitToken?.symbol ?? null, tokenDecimals: permitToken?.decimals ?? null, addressRisk, phishingSite: phishSite, connectedChainId: chain.evmChainId, t: exT });
     const decoded = decodeTx({ to: pending.raw.to, value: pending.raw.value, data: pending.raw.data });
     return explainRequest({ kind: 'tx', domain: pending.origin, decoded, simulation: sim && sim !== 'loading' ? sim : null, addressRisk, phishingSite: phishSite, nativeSymbol: chain.nativeSymbol, nativeDecimals: chain.nativeDecimals, txValue: pending.kind === 'tx' ? pending.value : undefined, simulating: sim === 'loading', t: exT });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, sim, risk, phishSite, permitToken, exT]);
+  }, [pending, sim, risk, phishSite, permitToken, exT, chain]);
 
   const perform = async (unlock: Unlock) => {
     if (!pending || !account || !evmAddress) return;
@@ -610,8 +631,6 @@ export default function Browser() {
         if (rememberSite) activity.remember(pending.origin);
       }
       haptic.success();
-      // La connexion lumineuse : un trait relie le logo du site à ton glyphe (400 ms).
-      setConnectLine(1);
       await new Promise((r) => setTimeout(r, 450));
     } else {
       const w = useWallet.getState();
@@ -672,7 +691,7 @@ export default function Browser() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, padding: SCREEN_MARGIN, paddingTop: insets.top + 48, justifyContent: 'center' }}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Surface><EmptyState icon="dapps" title={t('browserUnavailableTitle')} body={t('browserUnavailableMsg')} actionLabel={t('back')} onAction={() => router.back()} /></Surface>
+        <Card><EmptyState icon="dapps" title={t('browserUnavailableTitle')} body={t('browserUnavailableMsg')} actionLabel={t('back')} onAction={() => router.back()} /></Card>
       </View>
     );
   }
@@ -692,7 +711,7 @@ export default function Browser() {
    */
   const NewTabPage = () => {
     const cat = VERIFIED_DAPPS.find((c) => c.category === category) ?? VERIFIED_DAPPS[0];
-    const card = { borderRadius: 26, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border } as const;
+    const card = { borderRadius: radii.xl, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border } as const;
     return (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, padding: SCREEN_MARGIN, paddingTop: space[3], paddingBottom: space[10], gap: space[5] }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* En-tête : le titre, et la même orbite que l'accueil, en petit, en haut à droite. */}
@@ -752,14 +771,14 @@ export default function Browser() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ height: insets.top, backgroundColor: colors.bg }} />
-      <Comet progress={activeTab.url ? progress : 0} />
+      <Comet progress={progress} active={!!activeTab.url} />
 
       {/* Contenu : UNE WebView (onglet actif) ou la page nouvel onglet */}
       <View style={{ flex: 1 }}>
         {activeTab.url ? (
           blocked ? (
             <View style={{ flex: 1, justifyContent: 'center', padding: SCREEN_MARGIN }}>
-              <Surface style={{ gap: space[3], alignItems: 'center', borderWidth: 1, borderColor: colors.danger }}>
+              <Card style={{ gap: space[3], alignItems: 'center', borderWidth: 1, borderColor: colors.danger }}>
                 <Icon name="warning" size={32} color={colors.danger} />
                 <Text variant="title2" style={{ textAlign: 'center' }}>{t('siteBlockedTitle')}</Text>
                 <Text variant="bodySecondary" tone="secondary" style={{ textAlign: 'center' }}>
@@ -774,20 +793,20 @@ export default function Browser() {
                     if (origin) setBypassedHosts((prev) => new Set(prev).add(origin));
                   }}
                 />
-              </Surface>
+              </Card>
             </View>
           ) : webError ? (
             <View style={{ flex: 1, justifyContent: 'center', padding: SCREEN_MARGIN }}>
-              <Surface style={{ gap: space[3], alignItems: 'center' }}>
+              <Card style={{ gap: space[3], alignItems: 'center' }}>
                 <Icon name="warning" size={28} color={colors.warning} />
                 <Text variant="title2" style={{ textAlign: 'center' }}>{t('cannotOpenPage')}</Text>
                 <Text variant="bodySecondary" tone="secondary" style={{ textAlign: 'center' }}>
                   {t('siteNotResponding')}
                 </Text>
                 <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }} numberOfLines={2}>{webError}</Text>
-                <Button label={t('retry')} icon="refresh" onPress={() => { setWebError(null); setProgress(0); }} />
+                <Button label={t('retry')} icon="refresh" onPress={() => { setWebError(null); progress.set(0); }} />
                 <Button label={t('backToHome')} variant="secondary" onPress={goHome} />
-              </Surface>
+              </Card>
             </View>
           ) : <WebViewAny
             key={`${activeTab.id}:${activeTab.desktop ? 'd' : 'm'}`}
@@ -795,7 +814,7 @@ export default function Browser() {
             source={{ uri: activeTab.url }}
             originWhitelist={['https://*', 'about:blank']}
             onShouldStartLoadWithRequest={onShouldStart}
-            onLoadProgress={(e: { nativeEvent: { progress: number } }) => setProgress(e.nativeEvent.progress)}
+            onLoadProgress={(e: { nativeEvent: { progress: number } }) => progress.set(e.nativeEvent.progress)}
             onError={(e: { nativeEvent?: { description?: string; code?: number } }) => {
               const errDesc = e.nativeEvent?.description || `${t('networkError')}${e.nativeEvent?.code ? ` (${e.nativeEvent.code})` : ''}`;
               setWebError(errDesc);
@@ -881,7 +900,7 @@ export default function Browser() {
               <IconButton icon="close" label={t('cancel')} tone="ghost" onPress={() => { setEditing(false); setInput(''); }} />
               <View style={{ flex: 1, height: 48, borderRadius: radius.round, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.textSecondary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space[4], gap: space[2] }}>
                 <Icon name="search" size={15} tone="muted" />
-                <TextInput autoFocus value={input} onChangeText={setInput} onSubmitEditing={() => go(input)} placeholder={t('searchOrEnterUrl')} placeholderTextColor={colors.textTertiary} autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" selectTextOnFocus style={{ flex: 1, color: colors.text, fontSize: 16, fontFamily: 'GeneralSans-Medium', paddingVertical: 0 }} />
+                <TextInput autoFocus value={input} onChangeText={setInput} onSubmitEditing={() => go(input)} placeholder={t('searchOrEnterUrl')} placeholderTextColor={colors.textTertiary} autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" selectTextOnFocus style={{ flex: 1, color: colors.text, fontSize: fontSize.lg, fontFamily: 'GeneralSans-Medium', paddingVertical: 0 }} />
                 {input ? <KPressable onPress={() => setInput('')} hitSlop={8} accessibilityLabel={t('cancel')}><Icon name="close" size={14} tone="muted" /></KPressable> : null}
               </View>
               <IconButton icon="scan" label={t('scanQr')} tone="ghost" onPress={() => router.push('/scan')} />
@@ -897,14 +916,16 @@ export default function Browser() {
                 address={origin ? evmAddress : undefined}
                 chainId={activeTab.chainId}
                 compact={compact}
-                loading={progress > 0 && progress < 1}
+                loading={pageLoading}
                 placeholder={t('searchOrEnterUrl')}
                 onPress={() => { compact.value = withSpring(0, springs.standard); setInput(activeTab.url ?? ''); setEditing(true); }}
                 onLongPress={() => { if (activeTab.url) { Clipboard.setStringAsync(activeTab.url); haptic.light(); toast.success(t('linkCopied'), origin); } }}
                 onAccount={() => setConnSheet(true)}
               />
               <KPressable onPress={() => setSwitcher(true)} accessibilityLabel={`${tabs.length} ${t('tabs')}`} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-                <View style={{ width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                  {/* Le carré Phosphor occupe ~75 % de sa boîte : 32 donne le cadre de 24 d'origine. */}
+                  <View style={{ position: 'absolute' }}><Icon name="tabFrame" size={32} weight="bold" /></View>
                   <Text variant="micro" tabular>{tabs.length}</Text>
                 </View>
               </KPressable>
@@ -932,7 +953,7 @@ export default function Browser() {
               <KPressable key={tb.id} onPress={() => { setActiveId(tb.id); setSwitcher(false); }} accessibilityLabel={tb.title || host || t('newTab')} style={{ width: w }}>
                 <View style={{ height: w * 0.75, borderRadius: radius.container, backgroundColor: tb.incognito ? colors.bg : colors.surface1, borderWidth: on ? 2 : 1, borderColor: on ? colors.text : tb.incognito ? colors.textSecondary : colors.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   {host ? <DappLogo host={host} size={40} /> : <Icon name={tb.incognito ? 'incognito' : 'add'} size={28} tone="faint" />}
-                  <KPressable onPress={() => closeTab(tb.id)} hitSlop={8} accessibilityLabel={t('closeTab')} style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' }}>
+                  <KPressable onPress={() => closeTab(tb.id)} hitSlop={8} accessibilityLabel={t('closeTab')} style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: radii.full, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name="close" size={14} />
                   </KPressable>
                 </View>
@@ -976,7 +997,7 @@ export default function Browser() {
           <ListRow left={<Icon name="incognito" size={20} />} title={t('privateTab')} subtitle={t('nothingRemembered')} onPress={() => newTab(true)} />
           <ListRow left={<Icon name="appearance" size={20} />} title={t('darkSites')} right={<Switch value={forceDark} onValueChange={(v) => { setForceDark(v); saveForceDark(v); }} />} />
           <ListRow left={<Icon name="search" size={20} />} title={t('searchEngine')} subtitle={ENGINES.find((e) => e.key === engine)?.label} onPress={() => { const i = ENGINES.findIndex((e) => e.key === engine); const n = ENGINES[(i + 1) % ENGINES.length].key; setEngine(n); saveEngine(n); }} />
-          <ListRow left={<Icon name="history" size={20} />} title={t('history')} subtitle={`${recents.length} site${recents.length > 1 ? 's' : ''}`} onPress={() => { setMenu(false); goHome(); }} />
+          <ListRow left={<Icon name="history" size={20} />} title={t('history')} subtitle={t(new Intl.PluralRules(language).select(recents.length) === 'one' ? 'browserSitesOne' : 'browserSitesOther').replace('{count}', String(recents.length))} onPress={() => { setMenu(false); goHome(); }} />
           <View style={{ height: space[3] }} />
           <ListRow
             left={<Icon name="broom" size={20} color={colors.danger} />}
@@ -985,7 +1006,7 @@ export default function Browser() {
             style={{ minHeight: 56 }}
             onPress={() => {
               setMenu(false);
-              Alert.alert(`${t('clearData')} ?`, t('clearDataConfirmMsg'), [
+              Alert.alert(t('clearDataConfirmTitle'), t('clearDataConfirmMsg'), [
                 { text: t('cancel'), style: 'cancel' },
                 {
                   text: t('clearData'),
@@ -1156,18 +1177,13 @@ export default function Browser() {
           </View>
         ) : null}
 
-        <Surface style={{ padding: space[3], borderRadius: radius.container, gap: space[2] }}>
-          <Text variant="caption" tone="secondary">{t('canSeeAddress')}</Text>
-          <Text variant="caption" tone="secondary">{t('canProposeTx')}</Text>
-          <Text variant="caption" tone="secondary">{t('cannotMove')}</Text>
+        <Card style={{ padding: space[3], borderRadius: radius.container, gap: space[2] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}><Icon name="checkmark" size={14} color={colors.up} weight="bold" /><Text variant="caption" tone="secondary" style={{ flex: 1 }}>{t('canSeeAddress')}</Text></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}><Icon name="checkmark" size={14} color={colors.up} weight="bold" /><Text variant="caption" tone="secondary" style={{ flex: 1 }}>{t('canProposeTx')}</Text></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}><Icon name="lock" size={14} color={colors.textSecondary} weight="bold" /><Text variant="caption" tone="secondary" style={{ flex: 1 }}>{t('cannotMove')}</Text></View>
           <Divider />
-          <KPressable onPress={() => setRememberSite((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
-            <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: rememberSite ? colors.text : colors.border, backgroundColor: rememberSite ? colors.text : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-              {rememberSite ? <Icon name="check" size={14} color={colors.bg} /> : null}
-            </View>
-            <Text variant="body">{t('rememberSite')}</Text>
-          </KPressable>
-        </Surface>
+          <Checkbox checked={rememberSite} onChange={setRememberSite} label={<Text variant="body">{t('rememberSite')}</Text>} />
+        </Card>
 
         <View style={{ flexDirection: 'row', gap: space[2], marginTop: space[2] }}>
           <Button label={t('refuse')} variant="secondary" size="lg" style={{ flex: 1 }} onPress={deny} />

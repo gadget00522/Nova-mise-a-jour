@@ -6,7 +6,6 @@
  * à changer. Les 4 icônes maison (Envoyer, Recevoir, Swap, Signer) viendront
  * remplacer `send`/`receive`/`exchange`/`sign` quand elles seront dessinées.
  */
-import React from 'react';
 import type { Icon as PhosphorIcon, IconWeight } from 'phosphor-react-native';
 /*
  * UNE IMPORTATION PAR ICÔNE, pas le point d'entrée du paquet.
@@ -90,12 +89,17 @@ import { DetectiveIcon } from 'phosphor-react-native/src/icons/Detective';
 import { DesktopIcon } from 'phosphor-react-native/src/icons/Desktop';
 import { BroomIcon } from 'phosphor-react-native/src/icons/Broom';
 import { SquaresFourIcon } from 'phosphor-react-native/src/icons/SquaresFour';
+import { SquareIcon } from 'phosphor-react-native/src/icons/Square';
 import { CaretLeftIcon } from 'phosphor-react-native/src/icons/CaretLeft';
 import { LightbulbIcon } from 'phosphor-react-native/src/icons/Lightbulb';
 import { XLogoIcon } from 'phosphor-react-native/src/icons/XLogo';
 import { TelegramLogoIcon } from 'phosphor-react-native/src/icons/TelegramLogo';
 import { GithubLogoIcon } from 'phosphor-react-native/src/icons/GithubLogo';
 import { GearSixIcon } from 'phosphor-react-native/src/icons/GearSix';
+import { TrendUpIcon } from 'phosphor-react-native/src/icons/TrendUp';
+import { TrendDownIcon } from 'phosphor-react-native/src/icons/TrendDown';
+import { ArrowUpRightIcon } from 'phosphor-react-native/src/icons/ArrowUpRight';
+import { BackspaceIcon } from 'phosphor-react-native/src/icons/Backspace';
 import { useTheme } from './theme';
 
 export type IconName =
@@ -112,7 +116,11 @@ export type IconName =
   | 'sign' | 'back' | 'caretDown' | 'checkmark' | 'lock' | 'alert' | 'errorCircle' | 'clock'
   | 'incognito' | 'desktop' | 'broom' | 'tabs' | 'caretLeft' | 'bulb'
   | 'xLogo' | 'telegramLogo' | 'githubLogo' | 'gear'
-  | 'image';
+  | 'image'
+  // Glyphes texte remplacés (↑/↓ des variations, ↗ lien externe, ⇅ bascule, ✗ refus)
+  | 'trendUp' | 'trendDown' | 'arrowUpRight' | 'arrowsDownUp' | 'cross' | 'backspace'
+  // Cadre du compteur d'onglets (le nombre est posé dessus)
+  | 'tabFrame';
 
 const MAP: Record<IconName, { icon: PhosphorIcon; weight?: IconWeight }> = {
   home: { icon: HouseIcon },
@@ -195,6 +203,13 @@ const MAP: Record<IconName, { icon: PhosphorIcon; weight?: IconWeight }> = {
   // Même glyphe que `nft` : c'est une image dans les deux cas, et « nft »
   // ne veut rien dire sur un bouton « lire une image ».
   image: { icon: ImageIcon },
+  trendUp: { icon: TrendUpIcon },
+  trendDown: { icon: TrendDownIcon },
+  arrowUpRight: { icon: ArrowUpRightIcon },
+  arrowsDownUp: { icon: ArrowsDownUpIcon },
+  cross: { icon: XIcon },
+  backspace: { icon: BackspaceIcon },
+  tabFrame: { icon: SquareIcon },
 };
 
 export function Icon({

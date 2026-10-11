@@ -1,11 +1,17 @@
 /**
- * Button Kalyx — 4 variantes (§9) : principal (Lumière, h 56, rayon 18),
- * secondaire (Orbite, rayon 12), discret (texte seul), destructif.
- * États : normal, pressé (scale), désactivé, chargement. Zéro dégradé, zéro ombre.
+ * Button Kalyx — LE bouton de l'app. 5 variantes (§9) : principal (Lumière),
+ * secondaire (Orbite), contour (trait seul), discret (texte seul), destructif.
+ * États, tous gérés ici et nulle part ailleurs :
+ *  - pressé      : scale du kit + dépassement au relâchement (jamais d'opacité) ;
+ *  - désactivé   : aucune réaction, contraste réduit, annoncé au lecteur d'écran ;
+ *  - « pas encore » : tapable, explique pourquoi ;
+ *  - chargement / réussite : la forme ne bouge pas, seul le contenu change.
+ * Zéro dégradé, zéro ombre.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { Easing, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { useLoopActive } from '../useLoopActive';
+import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { Pressable } from './Pressable';
@@ -50,7 +56,6 @@ function SuccessCheck({ color, size = 22 }: { color: string; size?: number }) {
  * ce qu'il lui manque. Celui-ci reste tapable et RÉPOND.
  */
 function NotYetHint({ text, seq }: { text: string; seq: number }) {
-  const { colors } = useTheme();
   const v = useSharedValue(0);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -71,7 +76,7 @@ function NotYetHint({ text, seq }: { text: string; seq: number }) {
   );
 }
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive';
 
 /** Durée d'un cycle de brillance : un éclat court, puis une longue attente. */
 const SHEEN_CYCLE = 3800;
@@ -92,10 +97,12 @@ function Sheen({ color, radius: r }: { color: string; radius: number }) {
   const [w, setW] = useState(0);
   const t = useSharedValue(0);
 
+  const active = useLoopActive();
   useEffect(() => {
-    if (reduced || !w) return;
+    if (reduced || !w || !active) { cancelAnimation(t); t.value = 0; return; }
     t.value = withRepeat(withTiming(1, { duration: SHEEN_CYCLE, easing: Easing.linear }), -1, false);
-  }, [t, reduced, w]);
+    return () => cancelAnimation(t);
+  }, [t, reduced, w, active]);
 
   const style = useAnimatedStyle(() => {
     const p = t.value / SHEEN_TRAVEL;
@@ -181,11 +188,11 @@ export function Button({
       disabled={off}
       // Dépassement au relâchement : la sensation de matière (§6.2). Pas sur
       // les variantes discrètes, qui sont du texte.
-      overshoot={variant === 'primary' || variant === 'secondary'}
+      overshoot={variant === 'primary' || variant === 'secondary' || variant === 'outline'}
       // On ACTIONNE un bouton, on ne le choisit pas (§5).
       haptic="light"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+      accessibilityState={{ disabled: !!disabled, busy: !!busy }}
       accessibilityHint={notYet ? notYetHint : undefined}
       style={[
         {
@@ -200,7 +207,7 @@ export function Button({
           // « Interdit » s'efface ; « pas encore » reste lisible, car il invite
           // à être tapé pour obtenir son explication.
           opacity: disabled ? 0.4 : notYet ? 0.55 : 1,
-          borderWidth: variant === 'secondary' ? 1 : 0,
+          borderWidth: variant === 'secondary' || variant === 'outline' ? 1 : 0,
           borderColor: colors.border,
         },
         style,

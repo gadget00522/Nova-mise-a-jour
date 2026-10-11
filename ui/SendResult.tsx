@@ -9,7 +9,7 @@
  *    célébration de l'app : elle est réservée au moment où l'argent est arrivé ;
  *  - échec : croix rouge et une secousse brève — pas d'étincelles.
  */
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
@@ -17,7 +17,7 @@ import { Text, Halo } from './kit';
 import { SparkBurst } from './kit/SparkBurst';
 import { Icon } from './icon';
 import { useTheme } from './theme';
-import { BRAND_GOLD } from './tokens';
+import { BRAND_GOLD, fontSize } from './tokens';
 import { useReduceMotion } from '../lib/reduceMotion';
 import { haptic } from '../lib/haptics';
 import type { TxStage } from './kit';
@@ -86,7 +86,7 @@ export function SendResult({ stage, amount, dest }: { stage: TxStage; amount: st
         </Animated.View>
         {done && !reduce ? <SparkBurst burstKey="sent" count={36} radius={92} /> : null}
       </View>
-      <Text variant="balance" tabular style={{ fontSize: 34, lineHeight: 40, textAlign: 'center' }}>{amount}</Text>
+      <Text variant="balance" tabular style={{ fontSize: fontSize.h1, lineHeight: 40, textAlign: 'center' }}>{amount}</Text>
       <Text variant="bodySecondary" tone="secondary" style={{ textAlign: 'center' }}>{dest}</Text>
     </View>
   );

@@ -12,9 +12,9 @@ import { useT } from "../lib/settingsStore";
  * Composant de PRÉSENTATION : le parent fournit l'explication et gère l'action.
  */
 import { dappHost } from '../src/domain/web/dappHost';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, ScrollView, Image } from 'react-native';
-import { Text, Button, HoldButton, Surface, Divider, RiskBadge, AddressGlyph, Sheet, Skeleton, Pressable, Pressable as KPressable } from './kit';
+import { Text, Button, HoldButton, Divider, RiskBadge, AddressGlyph, Sheet, Skeleton, Pressable as KPressable, Card } from './kit';
 import { Icon } from './icon';
 import { useTheme } from './theme';
 import { space, radius } from './tokens';
@@ -93,9 +93,9 @@ export function SignSheet({
 
       {/* 3. Simulation */}
       {simulating ? (
-        <Surface level={1} style={{ gap: space[2] }}><Skeleton width="50%" /><Skeleton width="40%" /></Surface>
+        <Card level={1} style={{ gap: space[2] }}><Skeleton width="50%" /><Skeleton width="40%" /></Card>
       ) : explanation && (explanation.lose.length || explanation.receive.length) ? (
-        <Surface level={1} padded={false}>
+        <Card level={1} padded={false}>
           {explanation.lose.map((l, i) => (
             <View key={`l${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: space[3] }}>
               <Text variant="caption" tone="secondary">{t("tcLeaves")}</Text>
@@ -109,7 +109,7 @@ export function SignSheet({
               <Text variant="body" tone="up" tabular>+ {r}</Text>
             </View>
           ))}
-        </Surface>
+        </Card>
       ) : null}
 
       {/* 4. Risque */}

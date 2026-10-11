@@ -1,13 +1,12 @@
-import { NovaCard, Orbit } from '../../ui/nova';
-import React, { useRef } from 'react';
+import { Orbit } from '../../ui/nova';
+import { useRef } from 'react';
 import { View, Text, Linking } from 'react-native';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
-import { ScreenHeader, Pressable as KPressable } from '../../ui/kit';
-import { PremiumScreen, GlassCard, ListRow } from '../../ui/premium';
+import { ScreenHeader, Pressable as KPressable, Card, Screen, ListRow } from '../../ui/kit';
 import { KalyxLogo } from '../../ui/KalyxLogo';
 import { Icon } from '../../ui/icon';
-import { spacing, useTheme, fonts } from '../../ui/theme';
+import { spacing, useTheme, fonts, fontSize, radii } from '../../ui/theme';
 import { useT } from '../../lib/settingsStore';
 import { LEGAL_CONSTANTS } from '../constants/legal';
 import { IS_BETA } from '../../lib/appStage';
@@ -84,7 +83,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
   };
 
   return (
-    <PremiumScreen>
+    <Screen>
       <ScreenHeader
         onBack={onBack ? onBack : () => router.back()}
       />
@@ -98,7 +97,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
         <Text
           style={{
             color: colors.text,
-            fontSize: 24,
+            fontSize: fontSize.h3,
             fontFamily: fonts.bold,
             letterSpacing: 0.5,
           }}
@@ -119,7 +118,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
             <View
               style={{
                 backgroundColor: colors.warning + '22',
-                borderRadius: 6,
+                borderRadius: radii.xs,
                 paddingHorizontal: 7,
                 paddingVertical: 2,
               }}
@@ -127,7 +126,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
               <Text
                 style={{
                   color: colors.warning,
-                  fontSize: 10,
+                  fontSize: fontSize.xxs,
                   fontFamily: fonts.bold,
                   letterSpacing: 0.5,
                 }}
@@ -140,11 +139,11 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
       </View>
 
       {/* Section 1 : Éditeur de l'application */}
-      <NovaCard delay={50} style={{ gap: spacing(1.25), overflow: 'hidden' }}>
+      <Card rise delay={50} style={{ gap: spacing(1.25), overflow: 'hidden' }}>
         <Text
           style={[
             typography.caption,
-            { color: colors.primary, fontFamily: fonts.bold, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6 },
+            { color: colors.primary, fontFamily: fonts.bold, fontSize: fontSize.sm, textTransform: 'uppercase', letterSpacing: 0.6 },
           ]}
         >
           {t('legalPublisher')}
@@ -166,7 +165,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
               KALYX
             </Text>
             <Text style={[typography.micro, { color: colors.textSecondary, textAlign: 'right', marginTop: 2, flexWrap: 'wrap', flexShrink: 1 }]}>
-              Entrepreneur individuel : Ahamed Signate
+              {t('legalSoleTraderName').replace('{name}', 'Ahamed Signate')}
             </Text>
           </View>
         </View>
@@ -249,14 +248,14 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
             {t('legalAppTypeValue')}
           </Text>
         </View>
-      </NovaCard>
+      </Card>
 
       {/* Section 2 : Hébergement */}
-      <NovaCard delay={100} style={{ gap: spacing(0.75), overflow: 'hidden' }}>
+      <Card rise delay={100} style={{ gap: spacing(0.75), overflow: 'hidden' }}>
         <Text
           style={[
             typography.caption,
-            { color: colors.primary, fontFamily: fonts.bold, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6 },
+            { color: colors.primary, fontFamily: fonts.bold, fontSize: fontSize.sm, textTransform: 'uppercase', letterSpacing: 0.6 },
           ]}
         >
           {t('legalHosting')}
@@ -264,17 +263,19 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
         <Text style={[typography.body, { color: colors.text, lineHeight: 20, flexWrap: 'wrap' }]}>
           {hostingDisplay}
         </Text>
-      </NovaCard>
+      </Card>
 
       {/* Section 3 : Documents & Liens réglementaires */}
-      <NovaCard delay={150} style={{ overflow: 'hidden' }}>
+      <Card rise delay={150} padded={false}>
         <ListRow
+          wrap
           left={<Icon name="security" size={20} color={colors.textSecondary} />}
           title={t('legalPrivacyPolicy')}
           right={<Icon name="chevron" size={18} tone="faint" />}
           onPress={openPrivacy}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="phrase" size={20} color={colors.textSecondary} />}
           title={t('legalTermsOfService')}
@@ -282,6 +283,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={openTerms}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="faq" size={20} color={colors.textSecondary} />}
           title={t('faq')}
@@ -289,6 +291,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={() => router.push('/faq')}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="about" size={20} color={colors.textSecondary} />}
           title={t('thirdPartyLicenses')}
@@ -297,6 +300,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={() => router.push('/licenses')}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="dapps" size={20} color={colors.textSecondary} />}
           title={t('legalWebsite')}
@@ -305,6 +309,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={openWebsite}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="githubLogo" size={20} color={colors.textSecondary} />}
           title={t('legalGithub')}
@@ -312,6 +317,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={openGithub}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="telegramLogo" size={20} color={colors.textSecondary} />}
           title={t('joinTelegram')}
@@ -320,6 +326,7 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           onPress={openTelegram}
         />
         <ListRow
+          wrap
           divider
           left={<Icon name="xLogo" size={20} color={colors.textSecondary} />}
           title={t('followOnX')}
@@ -327,14 +334,14 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
           right={<Icon name="chevron" size={18} tone="faint" />}
           onPress={openX}
         />
-      </NovaCard>
+      </Card>
 
       {/* Footer & Mentions Droits réservés */}
       <View style={{ paddingVertical: spacing(1), alignItems: 'center' }}>
         <Text
           style={[
             typography.muted,
-            { textAlign: 'center', fontSize: 12, lineHeight: 18, flexWrap: 'wrap' },
+            { textAlign: 'center', fontSize: fontSize.xs, lineHeight: 18, flexWrap: 'wrap' },
           ]}
         >
           © 2026 {LEGAL_CONSTANTS.COMPANY_NAME}. {t('legalRightsReserved')}
@@ -342,13 +349,13 @@ export function LegalScreen({ onBack }: LegalScreenProps = {}) {
         <Text
           style={[
             typography.muted,
-            { textAlign: 'center', fontSize: 11, lineHeight: 16, marginTop: 4, flexWrap: 'wrap' },
+            { textAlign: 'center', fontSize: fontSize.xxs, lineHeight: 16, marginTop: 4, flexWrap: 'wrap' },
           ]}
         >
           {REOWN_NOTICE}
         </Text>
       </View>
-    </PremiumScreen>
+    </Screen>
   );
 }
 

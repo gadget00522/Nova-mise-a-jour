@@ -10,14 +10,15 @@
  *  - export CSV (téléchargé par le navigateur) ;
  *  - détail en feuille : statut, date, réseau, adresses, hash, explorateur.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { View, ScrollView, Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { Text, Surface, Divider, Chip, Input, SegmentedControl, ActivityRow, Skeleton, Sheet, ListRow, Button, Pressable } from '../kit';
+import { Text, Divider, Chip, Input, SegmentedControl, ActivityRow, Skeleton, Sheet, ListRow, Button, Pressable, Card } from '../kit';
 import { Icon } from '../icon';
 import { useTheme } from '../theme';
 import { space } from '../tokens';
 import { useT, useActivityT, useSettings, fiatSymbol } from '../../lib/settingsStore';
+import { csvLabels } from '../../lib/csvLabels';
 import { useHistoryStore, useHistoryCache, cacheKey } from '../../lib/historyStore';
 import { usePortfolioStore } from '../../lib/portfolio';
 import { useContacts } from '../../lib/contactsStore';
@@ -26,8 +27,18 @@ import { knownCounterparties, spamReason, type SpamCtx } from '../../src/domain/
 import { useWebConnect } from '../../lib/webConnect';
 import { toast } from '../../lib/toast';
 import {
-  humanizeTx, groupByDay, formatFiat, chainNameOf, chainMetaOf, chainIconUrl, nativeOfChain, transactionsToCsv, shortAddress,
-  type TxSummary, type HumanTx, type ChainConfig,
+  humanizeTx,
+  groupByDay,
+  formatFiat,
+  chainNameOf,
+  chainMetaOf,
+  chainIconUrl,
+  nativeOfChain,
+  transactionsToCsv,
+  shortAddress,
+  type TxSummary,
+  type HumanTx,
+  type ChainConfig
 } from '../../src';
 import { MobileEmptyState } from './MobileChrome';
 import { useWebT } from './webI18n';
@@ -96,15 +107,14 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
   }, [shared, holdingKey, cachedKey]);
   const targetKey = targets.map((x) => `${x.chain.id}:${x.address}`).join(',');
 
-  const load = useCallback(async (force: boolean) => {
+  const load = useEffectEvent(async (force: boolean) => {
     await Promise.all(targets.map((x) => fetchHistory(x.chain.id, x.address, { force }).catch(() => {})));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey, fetchHistory]);
+  });
   // `rev` change après chaque signature : l'activité est relue sans attendre.
   useEffect(() => {
     setAttempted(false);
     void load(rev > 0).finally(() => setAttempted(true));
-  }, [load, rev]);
+  }, [targetKey, rev]);
 
   const loading = useHistoryStore((s) => targets.some((x) => s.loading[cacheKey(x.chain.id, x.address)] === true));
 
@@ -194,6 +204,7 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
       nativeDecimals: first?.nativeDecimals ?? 18,
       explorerUrl: first?.explorerUrl,
       chainOf: chainMetaOf,
+      labels: csvLabels(t),
     });
     if (downloadText('kalyx-history.csv', csv)) return;
     void Clipboard.setStringAsync(csv).then(() => toast.success(t('copied'))).catch(() => toast.error(t('exportFailed')));
@@ -241,13 +252,13 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
   return (
     <View style={{ gap: space[3] }}>
       {poisoned ? (
-        <Surface style={{ borderColor: colors.danger, gap: space[1] }}>
+        <Card style={{ borderColor: colors.danger, gap: space[1] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
             <Icon name="alert" size={18} color={colors.danger} />
             <Text variant="body" tone="danger" style={{ flex: 1 }}>{t('histPoisonTitle')}</Text>
           </View>
           <Text variant="caption" tone="secondary">{t('histPoisonBody')}</Text>
-        </Surface>
+        </Card>
       ) : null}
       <Input placeholder={t('histSearch')} value={query} onChangeText={(v) => { setQuery(v); setLimit(PAGE); }} autoCapitalize="none" />
       <SegmentedControl
@@ -275,7 +286,7 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
         groups.map((g) => (
           <View key={g.label} style={{ gap: space[1] }}>
             <Text variant="micro" tone="tertiary" style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>{g.label}</Text>
-            <Surface padded={false}>{g.items.map((r, i) => renderRow(r, i === g.items.length - 1))}</Surface>
+            <Card padded={false}>{g.items.map((r, i) => renderRow(r, i === g.items.length - 1))}</Card>
           </View>
         ))
       )}
@@ -301,7 +312,7 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
       {hiddenShown.length > 0 ? (
         <View style={{ gap: space[2] }}>
           <Text variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>{t('histHiddenNote')}</Text>
-          <Surface padded={false} style={{ opacity: 0.75 }}>{hiddenShown.map((r, i) => renderRow(r, i === hiddenShown.length - 1))}</Surface>
+          <Card padded={false} style={{ opacity: 0.75 }}>{hiddenShown.map((r, i) => renderRow(r, i === hiddenShown.length - 1))}</Card>
         </View>
       ) : null}
 
@@ -310,7 +321,7 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
           <>
             <Text variant="title2">{detail.h.title}</Text>
             {detail.h.amount ? <Text variant="body" tabular>{detail.h.amount}{detail.h.fiat ? `  ·  ${detail.h.fiat}` : ''}</Text> : null}
-            <Surface padded={false}>
+            <Card padded={false}>
               <ListRow title={tw('txStatus')} right={<Text variant="body" tone={detail.tx.status === 'failed' ? 'danger' : detail.tx.status === 'pending' ? 'warning' : 'up'}>{status(detail.tx)}</Text>} />
               <Divider inset={16} />
               <ListRow title={tw('txDate')} right={<Text variant="body">{new Date(detail.tx.timestamp * 1000).toLocaleString(locale)}</Text>} />
@@ -322,7 +333,7 @@ export function WebActivity({ onReceive }: { onReceive: () => void }) {
               <ListRow title={tw('txTo')} subtitle={shortAddress(detail.tx.to)} onPress={() => copy(detail.tx.to, t('addressCopied'))} right={<Icon name="copy" size={14} color={colors.textTertiary} />} />
               <Divider inset={16} />
               <ListRow title={tw('txHash')} subtitle={shortAddress(detail.tx.hash)} onPress={() => copy(detail.tx.hash, tw('hashCopied'))} right={<Icon name="copy" size={14} color={colors.textTertiary} />} />
-            </Surface>
+            </Card>
             {explorerTx ? (
               <Button label={tw('openExplorer')} variant="secondary" onPress={() => { const w = (globalThis as { open?: (u: string, target?: string, features?: string) => unknown }).open; w?.(explorerTx, '_blank', 'noopener,noreferrer'); }} />
             ) : null}

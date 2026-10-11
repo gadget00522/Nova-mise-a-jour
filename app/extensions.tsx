@@ -1,21 +1,19 @@
-import { NovaCard, NovaHero, NovaSwitch, SettingRow } from '../ui/nova';
-import { ScreenHeader } from '../ui/kit';
-import React from 'react';
-import { View, Text, Switch, ScrollView } from 'react-native';
+import { NovaHero, SettingRow } from '../ui/nova';
+import { ScreenHeader, Card, Screen, Switch } from '../ui/kit';
+import { ScrollView } from 'react-native';
 import { Stack } from 'expo-router';
-import { PremiumScreen, GlassCard } from '../ui/premium';
-import { Icon, type IconName } from '../ui/icon';
-import { spacing, useTheme } from '../ui/theme';
+import { type IconName } from '../ui/icon';
+import { spacing } from '../ui/theme';
 import { useSettings, useT } from '../lib/settingsStore';
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * Modules & fonctions : active/désactive des capacités optionnelles de Kalyx.
  * Chaque bascule agit vraiment sur l'app (pas de placeholder).
  */
 export default function Extensions() {
-  const { colors, typography } = useTheme();
   const t = useT();
-  const { securityScan, uiMode, setFlag, setUiMode } = useSettings();
+  const { securityScan, uiMode, setFlag, setUiMode } = useSettings(useShallow((s) => ({ securityScan: s.securityScan, uiMode: s.uiMode, setFlag: s.setFlag, setUiMode: s.setUiMode })));
 
   const modules: { icon: IconName; title: string; sub: string; value: boolean; onChange: (v: boolean) => void }[] = [
     {
@@ -37,17 +35,17 @@ export default function Extensions() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <PremiumScreen>
+      <Screen>
       <ScreenHeader />
       <NovaHero icon="extensions" title={t('extensions')} subtitle={t('extensionsIntro')} />
       <ScrollView contentContainerStyle={{ gap: spacing(1.5), paddingBottom: spacing(4) }} showsVerticalScrollIndicator={false}>
-        <NovaCard delay={120}>
+        <Card rise delay={120}>
           {modules.map((m, i) => (
-            <SettingRow key={m.title} divider={i > 0} icon={m.icon} tone={m.value ? 'gold' : undefined} title={m.title} hint={m.sub} right={<NovaSwitch value={m.value} onValueChange={m.onChange} />} />
+            <SettingRow key={m.title} divider={i > 0} icon={m.icon} tone={m.value ? 'gold' : undefined} title={m.title} hint={m.sub} right={<Switch value={m.value} onValueChange={m.onChange} />} />
           ))}
-        </NovaCard>
+        </Card>
       </ScrollView>
-    </PremiumScreen>
+    </Screen>
     </>
   );
 }

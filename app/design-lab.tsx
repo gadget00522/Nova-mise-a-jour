@@ -12,7 +12,7 @@ import { useTheme } from '../ui/theme';
 import { space, SCREEN_MARGIN } from '../ui/tokens';
 import { toast } from '../lib/toast';
 import {
-  Text, Button, IconButton, HoldButton, Surface, Divider, ListRow, TokenRow, TokenIcon, AddressGlyph,
+  Text, Button, IconButton, HoldButton, Card, Divider, ListRow, TokenRow, TokenIcon, AddressGlyph,
   AmountDisplay, Chip, RiskBadge, SegmentedControl, Input, Skeleton, EmptyState, Halo,
 } from '../ui/kit';
 
@@ -88,7 +88,7 @@ export default function DesignLab() {
         </Section>
 
         <Section title="Glyphes d'adresse (anti-empoisonnement)">
-          <Surface>
+          <Card>
             <View style={{ flexDirection: 'row', gap: space[3], flexWrap: 'wrap' }}>
               {ADDR.map((a) => (
                 <View key={a} style={{ alignItems: 'center', gap: space[1] }}>
@@ -98,11 +98,11 @@ export default function DesignLab() {
               ))}
             </View>
             <Text variant="caption" tone="secondary" style={{ marginTop: space[3] }}>Les deux premières diffèrent d'un seul caractère : étoiles différentes.</Text>
-          </Surface>
+          </Card>
         </Section>
 
         <Section title="Liste de tokens (une carte par groupe)">
-          <Surface padded={false}>
+          <Card padded={false}>
             <TokenRow symbol="ETH" name="Ethereum" logo="https://assets.coingecko.com/coins/images/279/small/ethereum.png" balance="1.42 ETH" fiat="4 210,00 €" changePct={2.1} onPress={() => {}} />
             <Divider inset={68} />
             <TokenRow symbol="USDC" name="USD Coin" address="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" balance="3 100 USDC" fiat="3 100,00 €" changePct={0} onPress={() => {}} />
@@ -110,12 +110,12 @@ export default function DesignLab() {
             <TokenRow symbol="SOL" name="Solana" address="11111111111111111111111111111111" balance="0.5 SOL" fiat="49,52 €" changePct={-3.4} onPress={() => {}} />
             <Divider inset={68} />
             <TokenRow symbol="ETH" name="Masqué" balance="1 ETH" fiat="2 000 €" changePct={1} hidden />
-          </Surface>
-          <Surface padded={false}>
+          </Card>
+          <Card padded={false}>
             <ListRow left={<TokenIcon symbol="K" seed="kalyx" size={36} />} title="Ligne simple" subtitle="Avec sous-titre" chevron onPress={() => {}} />
             <Divider inset={64} />
             <ListRow title="Sans icône" right={<Text variant="caption" tone="secondary">Détail</Text>} />
-          </Surface>
+          </Card>
         </Section>
 
         <Section title="Contrôles">
@@ -140,7 +140,7 @@ export default function DesignLab() {
         </Section>
 
         <Section title="États">
-          <Surface style={{ gap: space[3] }}>
+          <Card style={{ gap: space[3] }}>
             <View style={{ flexDirection: 'row', gap: space[3], alignItems: 'center' }}>
               <Skeleton width={40} height={40} round />
               <View style={{ flex: 1, gap: space[2] }}>
@@ -149,16 +149,16 @@ export default function DesignLab() {
               </View>
               <Skeleton width={64} />
             </View>
-          </Surface>
-          <Surface>
+          </Card>
+          <Card>
             <EmptyState icon="receive" title={t("emptyTokensTitle")} body={t("emptyTokensBody")} actionLabel={t("receive")} onAction={() => {}} />
-          </Surface>
+          </Card>
         </Section>
 
         <Section title="Surfaces">
-          <Surface level={1}><Text variant="body">Nuit — conteneur</Text></Surface>
-          <Surface level={2}><Text variant="body">Orbite — sheet, input</Text></Surface>
-          <Surface level={3}><Text variant="body">Crépuscule — pressé</Text></Surface>
+          <Card level={1}><Text variant="body">Nuit — conteneur</Text></Card>
+          <Card level={2}><Text variant="body">Orbite — sheet, input</Text></Card>
+          <Card level={3}><Text variant="body">Crépuscule — pressé</Text></Card>
         </Section>
       </ScrollView>
     </View>

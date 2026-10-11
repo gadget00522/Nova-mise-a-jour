@@ -11,9 +11,9 @@
  *  - Solana : la transaction du devis est signée par le téléphone puis diffusée
  *             ici (simulation → envoi → confirmation, comme l'app).
  */
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { View, ScrollView, Pressable as RNPressable } from 'react-native';
-import { Text, Button, IconButton, Surface, Divider, TokenIcon, AmountKeypad, Chip, Sheet, HoldButton, CountdownRing, Skeleton, EmptyState } from '../kit';
+import { Text, Button, IconButton, Divider, TokenIcon, AmountKeypad, Chip, Sheet, HoldButton, TickerCountdownRing, Skeleton, EmptyState, Card } from '../kit';
 import { SuccessModal } from '../SuccessModal';
 import { TokenPicker } from '../TokenPicker';
 import { Icon } from '../icon';
@@ -23,20 +23,35 @@ import { useT } from '../../lib/settingsStore';
 import { useTokenStore, type Tok } from '../../lib/tokenStore';
 import { useWebConnect } from '../../lib/webConnect';
 import { submitSolanaSigned } from '../../lib/solanaSubmit';
-import { UserFacingError, friendlyTxError } from '../../lib/txError';
+import { UserFacingError } from '../../lib/txError';
 import { webErrorText } from './webErrors';
 import {
-  getAdapter, getErc20Tokens, getBestQuote, parseAmount, formatTokenAmount, formatInputAmount, formatFiat, isWalletError,
-  NATIVE_TOKEN, estimateGasReserve, type GasReserve, type SwapQuote, EvmChainAdapter, SolanaChainAdapter, type ChainConfig,
-  decimalSeparator,
+  getAdapter,
+  getErc20Tokens,
+  getBestQuote,
+  parseAmount,
+  formatTokenAmount,
+  formatInputAmount,
+  formatFiat,
+  isWalletError,
+  NATIVE_TOKEN,
+  estimateGasReserve,
+  type GasReserve,
+  type SwapQuote,
+  EvmChainAdapter,
+  SolanaChainAdapter,
+  type ChainConfig,
+  decimalSeparator
 } from '../../src';
 import { encodeErc20Approve, hexQuantity } from './evmEncode';
 import { FlowEmbedContext, useFlowRootStyle, useFlowScrollStyle } from './flowEmbed';
 import { useWebT } from './webI18n';
 import { KalyxSpinner } from './motion';
 import { addressForChain, chainOf } from './webAccounts';
+import { createTicker, useTicker } from '../../lib/ticker';
 
 const QUOTE_TTL_S = 30;
+const isPositive = (v: number) => v > 0;
 
 function isNativeTokenAddress(address?: string): boolean {
   if (!address) return false;
@@ -83,7 +98,8 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [pickerState, setPickerState] = useState<{ visible: boolean; side: 'from' | 'to' }>({ visible: false, side: 'from' });
   const [slippage, setSlippage] = useState('0.005');
-  const [countdown, setCountdown] = useState(0);
+  const [countdown] = useState(() => createTicker(0));
+  const countdownActive = useTicker(countdown, isPositive);
   const [stale, setStale] = useState(false);
   const countdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -131,19 +147,20 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
       }
     }
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChain, address]);
+  }, [activeChain, chain, address]);
 
   const curated = tokensByChain[activeChain] ?? [];
   const curatedAddrs = new Set(curated.map((tk) => tk.address.toLowerCase()));
   const fromTokens = [...curated, ...held.filter((tk) => !curatedAddrs.has(tk.address.toLowerCase()))];
 
-  useEffect(() => {
+  const applyPendingFrom = useEffectEvent(() => {
     const p = pendingFrom.current;
     if (!p || p.chainId !== activeChain) return;
     const idx = fromTokens.findIndex((tk) => tk.address.toLowerCase() === p.address.toLowerCase());
     if (idx >= 0) { setFrom(idx); pendingFrom.current = null; }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    applyPendingFrom();
   }, [activeChain, fromTokens.length]);
 
   useEffect(() => { if (toChain !== activeChain) fetchTokens(toChain); }, [toChain, activeChain, fetchTokens]);
@@ -158,26 +175,27 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
   const isBridge = toChain !== activeChain;
   const [flipped, setFlipped] = useState(false);
 
+  const fromTokAddr = fromTok?.address;
   useEffect(() => {
     let cancelled = false;
-    if (!address || !fromTok || isNativeTokenAddress(fromTok.address)) { setSelectedTokenBalance(null); return; }
-    const heldTok = held.find((h) => h.address.toLowerCase() === fromTok.address.toLowerCase()) as (Tok & { balance?: bigint }) | undefined;
+    if (!address || !fromTokAddr || isNativeTokenAddress(fromTokAddr)) { setSelectedTokenBalance(null); return; }
+    const heldTok = held.find((h) => h.address.toLowerCase() === fromTokAddr.toLowerCase()) as (Tok & { balance?: bigint }) | undefined;
     if (heldTok) { setSelectedTokenBalance(heldTok.balance ?? 0n); return; }
     const adapter = getAdapter(activeChain);
     if (adapter instanceof EvmChainAdapter) {
-      adapter.getTokenBalance(fromTok.address, address).then((b) => { if (!cancelled) setSelectedTokenBalance(b); }).catch(() => { if (!cancelled) setSelectedTokenBalance(0n); });
+      adapter.getTokenBalance(fromTokAddr, address).then((b) => { if (!cancelled) setSelectedTokenBalance(b); }).catch(() => { if (!cancelled) setSelectedTokenBalance(0n); });
     } else if (adapter instanceof SolanaChainAdapter) {
       adapter.getSplTokens(address).then((tokens) => {
-        if (!cancelled) { const found = tokens.find((x) => x.mint.toLowerCase() === fromTok.address.toLowerCase()); setSelectedTokenBalance(found ? found.raw : 0n); }
+        if (!cancelled) { const found = tokens.find((x) => x.mint.toLowerCase() === fromTokAddr.toLowerCase()); setSelectedTokenBalance(found ? found.raw : 0n); }
       }).catch(() => { if (!cancelled) setSelectedTokenBalance(0n); });
     }
     return () => { cancelled = true; };
-  }, [activeChain, address, fromTok?.address, held]);
+  }, [activeChain, address, fromTokAddr, held]);
 
   const stopCountdown = () => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
     countdownInterval.current = null;
-    setCountdown(0);
+    countdown.set(0);
   };
   const onFlip = () => {
     if (isBridge) return;
@@ -206,13 +224,12 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
   useEffect(() => { pausedRef.current = confirming || step !== null; }, [confirming, step]);
   const startCountdown = () => {
     stopCountdown();
-    setCountdown(QUOTE_TTL_S);
+    countdown.set(QUOTE_TTL_S);
     countdownInterval.current = setInterval(() => {
       if (pausedRef.current) return;
-      setCountdown((c) => {
-        if (c <= 1) { void onQuote({ auto: true }); return QUOTE_TTL_S; }
-        return c - 1;
-      });
+      const expired = countdown.get() <= 1;
+      countdown.set(expired ? QUOTE_TTL_S : countdown.get() - 1);
+      if (expired) void onQuote({ auto: true });
     }, 1000);
   };
 
@@ -349,13 +366,13 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
   const [review, setReview] = useState(false);
 
   const TokenBlock = ({ label, tok, chainId, value, onPick, right, muted }: { label: string; tok: Tok | undefined; chainId: string; value: string; onPick: () => void; right?: React.ReactNode; muted?: boolean }) => (
-    <Surface level={2} style={{ gap: space[2] }}>
+    <Card level={2} style={{ gap: space[2] }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text variant="caption" tone="secondary">{label}</Text>
         {right}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[3] }}>
-        <Text variant="balance" tabular numberOfLines={1} adjustsFontSizeToFit style={{ flex: 1, fontSize: 36, lineHeight: 42, color: muted ? colors.textSecondary : colors.text }}>{value || '0'}</Text>
+        <Text variant="display" tabular numberOfLines={1} adjustsFontSizeToFit style={{ flex: 1, color: muted ? colors.textSecondary : colors.text }}>{value || '0'}</Text>
         <RNPressable onPress={onPick} accessibilityLabel={tw('chooseToken', { label })} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[2], paddingVertical: 6, paddingLeft: 6, paddingRight: 10, borderRadius: radius.round, backgroundColor: pressed ? colors.surface3 : colors.surface1, borderWidth: 1, borderColor: colors.border })}>
           {tok ? <TokenIcon symbol={tok.symbol} logo={tok.logo} seed={tok.address} size={28} /> : <Skeleton width={28} height={28} round />}
           <View>
@@ -365,7 +382,7 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
           <Icon name="caretDown" size={14} tone="muted" />
         </RNPressable>
       </View>
-    </Surface>
+    </Card>
   );
 
   return (
@@ -373,12 +390,12 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
       <View style={{ paddingHorizontal: SCREEN_MARGIN, height: 48, flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
         <IconButton icon="back" label={t('back')} tone="ghost" onPress={onClose} />
         <Text variant="title2" style={{ flex: 1 }}>{isBridge ? t('bridgeAction') : t('swapAction')}</Text>
-        {quote && countdown > 0 && !stale ? <CountdownRing progress={countdown / QUOTE_TTL_S} /> : null}
+        {quote && countdownActive && !stale ? <TickerCountdownRing ticker={countdown} total={QUOTE_TTL_S} /> : null}
       </View>
 
       {!available ? (
         <View style={{ padding: SCREEN_MARGIN }}>
-          <Surface><EmptyState icon="exchange" title={t('swapUnavailable')} body={t('swapUnavailableHint')} /></Surface>
+          <Card><EmptyState icon="exchange" title={t('swapUnavailable')} body={t('swapUnavailableHint')} /></Card>
         </View>
       ) : !fromTok || !toTok ? (
         <View style={{ padding: SCREEN_MARGIN, gap: space[3] }}><Skeleton height={110} /><Skeleton height={110} /></View>
@@ -451,7 +468,7 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
         {quote && fromTok && toTok ? (
           <>
             <Text variant="title2">{isBridge ? t('verifyBridgeTitle') : t('verifySwapTitle')}</Text>
-            <Surface level={1} padded={false}>
+            <Card level={1} padded={false}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: space[3] }}><Text variant="caption" tone="secondary">{t('youGive')}</Text><Text variant="body" tone="down" tabular>− {amount} {fromTok.symbol}</Text></View>
               <Divider />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: space[3] }}><Text variant="caption" tone="secondary">{t('youReceiveEstimated')}</Text><Text variant="body" tone="up" tabular>+ {formatTokenAmount(quote.toAmount, quote.toToken.decimals)} {toTok.symbol}</Text></View>
@@ -461,7 +478,7 @@ export function SwapScreen({ chain: initialChain, onClose }: { chain: ChainConfi
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: space[3] }}><Text variant="caption" tone="secondary">{t('networkFee')}</Text><Text variant="caption" tabular>{quote.gasCostNative > 0n && quote.gasToken ? `≈ ${formatTokenAmount(quote.gasCostNative, quote.gasToken.decimals)} ${quote.gasToken.symbol}` : ''}{quote.gasCostUsd > 0 ? ` (≈ ${formatFiat(quote.gasCostUsd)} $)` : quote.gasCostNative > 0n ? '' : '—'}</Text></View>
               <Divider />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: space[3] }}><Text variant="caption" tone="secondary">{t('kalyxFee')}</Text><Text variant="caption" tabular>{((quote.kalyxFeeApplied ?? 0) * 100).toFixed(1).replace('.', decimalSeparator())} %</Text></View>
-            </Surface>
+            </Card>
             <Text variant="caption" tone="secondary">{routeSentence}{t('slippageTolerance')}{(quote.slippage * 100).toFixed(1).replace('.', decimalSeparator())} %.</Text>
             <Text variant="caption" tone="tertiary">{tw('signOnPhoneNote')}</Text>
             {stale ? (

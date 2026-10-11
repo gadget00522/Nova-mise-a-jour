@@ -11,9 +11,9 @@
  * sur le réseau Bitcoin, pour le compte courant, et pour une transaction dont on
  * a gardé les entrées (sans elles, aucun remplacement n'est constructible).
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Text, Button, Surface } from './kit';
+import { Text, Button, Card } from './kit';
 import { space } from './tokens';
 import { ConfirmUnlock } from './ConfirmUnlock';
 import { useWallet } from '../lib/walletStore';
@@ -64,11 +64,12 @@ export function BtcAccelerate() {
    * `confirmed` — une transaction inconnue du nœud reste `pending`, et
    * l'effacer là ferait perdre les entrées, donc tout recours.
    */
+  const pendingTxid = pending?.txid;
   useEffect(() => {
-    if (!pending) return;
+    if (!pendingTxid) return;
     const adapter = findAdapterV2(activeChain);
     if (!adapter) return;
-    const txid = pending.txid;
+    const txid = pendingTxid;
     let alive = true;
 
     const check = async () => {
@@ -87,7 +88,7 @@ export function BtcAccelerate() {
       alive = false;
       clearInterval(timer);
     };
-  }, [pending?.txid, activeChain]);
+  }, [pendingTxid, activeChain]);
 
   if (!pending) return null;
 
@@ -108,7 +109,7 @@ export function BtcAccelerate() {
 
   return (
     <>
-      <Surface>
+      <Card>
         <View style={{ gap: space[2] }}>
           <Text variant="body">{t('btcPendingTitle')}</Text>
           <Text variant="caption" tone="secondary">
@@ -124,7 +125,7 @@ export function BtcAccelerate() {
             onPress={() => setAsking(true)}
           />
         </View>
-      </Surface>
+      </Card>
       <ConfirmUnlock
         visible={asking}
         title={t('btcBumpAction')}

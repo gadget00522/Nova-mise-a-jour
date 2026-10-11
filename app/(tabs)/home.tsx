@@ -10,9 +10,10 @@
  * puis mise à jour en silence. 5 états : chargement (skeleton), normal, vide,
  * erreur (bandeau), hors ligne (OfflineBanner global).
  */
+import { useNetwork } from '../../lib/networkStore';
 import { useIsWatchOnly } from '../../ui/WatchOnlyGate';
 import { fill } from '../../lib/i18n';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { decimalSeparator } from '../../src';
 import { isDecoySession } from '../../lib/sessionMode';
 import { View, RefreshControl, Alert, Image, useWindowDimensions } from 'react-native';
@@ -27,13 +28,13 @@ import { NftDetailModal } from '../../ui/NftDetailModal';
 import { InteractiveChart } from '../../ui/InteractiveChart';
 import { Icon } from '../../ui/icon';
 import { useTheme } from '../../ui/theme';
-import { space, SCREEN_MARGIN, radius } from '../../ui/tokens';
+import { space, SCREEN_MARGIN, radius, radii } from '../../ui/tokens';
 import { FadeInUp } from '../../ui/FadeInUp';
 import { cascadeDelay } from '../../ui/motion';
 import { holdingLabel } from '../../lib/holdingLabel';
 import { Aurora } from '../../ui/Aurora';
 import { holdingIcon } from '../../ui/kit/useFallbackLogo';
-import { LogoImage, Text, IconButton, Surface, Divider, TokenRow, TokenIcon, AmountDisplay, Skeleton, EmptyState, Halo, ActivityRow, Pressable as KPressable } from '../../ui/kit';
+import { LogoImage, Text, IconButton, Divider, TokenRow, TokenIcon, AmountDisplay, Skeleton, EmptyState, Halo, ActivityRow, Pressable as KPressable, Card } from '../../ui/kit';
 import { WalletAvatar } from '../../ui/avatarArt';
 import { ActionDisc, Orbit, Pills, TextTabs, GOLD } from '../../ui/nova';
 import { TonNftSendSheet } from '../../ui/TonNftSendSheet';
@@ -50,16 +51,17 @@ import { haptic } from '../../lib/haptics';
 import { toast } from '../../lib/toast';
 import { isDeviceCompromised } from '../../lib/deviceSecurity';
 import { IS_BETA } from '../../lib/appStage';
-import { getAdapter, listChains, nativeOfChain, chainNameOf, chainIconUrl, formatFiat, formatTokenAmount, humanizeTx, type ChartPoint, type NftItem } from '../../src';
+import { getAdapter, nativeOfChain, chainNameOf, chainIconUrl, formatFiat, formatTokenAmount, humanizeTx, type ChartPoint, type NftItem } from '../../src';
 import {
   useHistoryStore,
   useHistoryCache,
   useAnyHistoryLoading,
   useAnyHistoryFetched,
   aggregateHistory,
-  type HistoryChain,
+  type HistoryChain
 } from '../../lib/historyStore';
 import { useSpamOf, useHistoryChains } from '../../lib/historySpam';
+import { useShallow } from 'zustand/react/shallow';
 
 const HIDE_KEY = 'kalyx.hideBalance';
 const SMALL_KEY = 'kalyx.showSmallBalances';
@@ -100,6 +102,7 @@ const NFT_PAGE = 12;
 export default function Home() {
   const { colors } = useTheme();
   const t = useT();
+  const online = useNetwork((s) => s.online);
   const activityT = useActivityT();
   const insets = useSafeAreaInsets();
   const { width: windowW } = useWindowDimensions();
@@ -131,7 +134,7 @@ export default function Home() {
     'Tout': t('periodAll'),
   };
 
-  const pf = usePortfolioStore();
+  const pf = usePortfolioStore(useShallow((s) => ({ at: s.at, error: s.error, fromCache: s.fromCache, holdings: s.holdings, key: s.key, loading: s.loading, pnl24h: s.pnl24h, pnl24hPct: s.pnl24hPct, total: s.total })));
   const [hidden, setHidden] = useState(false);
   const [tab, setTab] = useState<Tab>('tokens');
   const [period, setPeriod] = useState<Period>('1S');
@@ -171,11 +174,18 @@ export default function Home() {
   const parked = useBrowserPresence((s) => s.parked);
 
   // Cache d'abord (instantané), puis réseau.
-  useEffect(() => {
+  const loadPortfolio = useEffectEvent(() => {
     if (!acct) return;
-    pf.hydrate(acct, fiat).then((current) => { if (current) void pf.refresh(acct, fiat); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [acct?.evmAddress, acct?.solAddress, acct?.btcAddress, acct?.tonPublicKey, fiat]); // toutes les adresses de la clé du cliché
+    const store = usePortfolioStore.getState();
+    store.hydrate(acct, fiat).then((current) => { if (current) void store.refresh(acct, fiat); });
+  });
+  const evmAddress = acct?.evmAddress;
+  const solAddress = acct?.solAddress;
+  const btcAddress = acct?.btcAddress;
+  const tonPublicKey = acct?.tonPublicKey;
+  useEffect(() => {
+    loadPortfolio();
+  }, [evmAddress, solAddress, btcAddress, tonPublicKey, fiat]); // toutes les adresses de la clé du cliché
 
   // Solde masqué : mémorisé.
   useEffect(() => {
@@ -190,27 +200,30 @@ export default function Home() {
   };
 
   // Courbe de valeur pour la période.
+  const pfKey = pf.key;
+  const pfAt = pf.at;
+  const loadCurve = useEffectEvent((key: string) => portfolioHistory(pf.holdings, fiat, period, key));
+  const hasHoldings = pf.holdings.length > 0;
   useEffect(() => {
     let alive = true;
-    if (!pf.key || pf.holdings.length === 0) {
+    if (!pfKey || !hasHoldings) {
       setPoints([]);
       return;
     }
-    const known = peekPortfolioHistory(pf.key, period);
+    const known = peekPortfolioHistory(pfKey, period);
     if (known) {
       setPoints(known);
       return;
     }
     setChartLoading(true);
-    portfolioHistory(pf.holdings, fiat, period, pf.key)
+    loadCurve(pfKey)
       .then((p) => alive && setPoints(p))
       .catch(() => alive && setPoints([]))
       .finally(() => alive && setChartLoading(false));
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pf.key, pf.at, period, fiat]);
+  }, [pfKey, pfAt, period, fiat, hasHoldings]);
 
   /*
    * ACTIVITÉ RÉCENTE — CACHE D'ABORD, RÉSEAU ENSUITE.
@@ -284,17 +297,17 @@ export default function Home() {
    */
   const nftsRead = useRef<{ key: string; at: number } | null>(null);
   const nftKey = acct ? `${acct.evmAddress}|${acct.solAddress ?? ''}|${acct.tonPublicKey ?? ''}` : '';
+  const readNfts = useEffectEvent(() => (acct ? loadNftReport(acct) : null));
   useEffect(() => {
-    if (tab !== 'nft' || !acct) return;
+    if (tab !== 'nft' || !nftKey) return;
     const last = nftsRead.current;
     if (last && last.key === nftKey && Date.now() - last.at < 60_000) return;
     if (last?.key !== nftKey) setNfts(null);
     nftsRead.current = { key: nftKey, at: Date.now() };
     let alive = true;
-    loadNftReport(acct).then((r) => alive && applyNftReport(r)).catch(() => alive && setNfts((cur) => cur ?? []));
+    readNfts()?.then((r) => alive && applyNftReport(r)).catch(() => alive && setNfts((cur) => cur ?? []));
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, nftKey]);
+  }, [tab, nftKey, applyNftReport]);
 
   const retryNfts = useCallback(() => {
     if (!acct) return;
@@ -328,7 +341,7 @@ export default function Home() {
        * sans jamais être redemandée.
        */
       await Promise.all([
-        pf.refresh(acct, fiat, { force: true }),
+        usePortfolioStore.getState().refresh(acct, fiat, { force: true }),
         ...historyChains.map((chain) => {
           const address = historyAddressFor(chain);
           return address ? fetchHistory(chain.id, address, { force: true }).catch(() => {}) : Promise.resolve();
@@ -342,11 +355,10 @@ export default function Home() {
     } finally {
       setRefreshing(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [acct, fiat, tab, nftKey, historyChains, historyAddressFor]);
+  }, [acct, fiat, tab, nftKey, historyChains, historyAddressFor, fetchHistory, applyNftReport]);
 
   // Avertissements uniques (bêta, appareil rooté, réseaux perso à restaurer).
-  useEffect(() => {
+  const showStartupNotices = useEffectEvent(() => {
     if (isDeviceCompromised()) toast.warning(t("deviceInsecureTitle"), t("deviceInsecureDesc"));
     // Session leurre : ni lecture ni écriture de ces marqueurs (le rappel des réseaux perso appartient au vrai portefeuille).
     if (isDecoySession()) return;
@@ -365,6 +377,9 @@ export default function Home() {
         { text: t("actionUnderstood"), onPress: () => { AsyncStorage.setItem('nova.betaSeen', '1'); void next(); } },
       ]);
     });
+  });
+  useEffect(() => {
+    showStartupNotices();
   }, []);
 
   /*
@@ -593,7 +608,7 @@ export default function Home() {
         {/* ── En-tête : compte ▾ · réseau ▾ · notifications · scanner (le menu est dans la barre) ── */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[2] }}>
           <KPressable onPress={() => router.push('/accounts')} accessibilityLabel={t("a11ySwitchAccount")} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space[3], height: 48, paddingRight: space[1] }}>
-            <View style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 42, height: 42, borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1, alignItems: 'center', justifyContent: 'center' }}>
               <WalletAvatar size={32} />
             </View>
             <View style={{ flexShrink: 1, minWidth: 0 }}>
@@ -621,7 +636,7 @@ export default function Home() {
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: -space[2] }}>
             <View>
               <IconButton icon="bell" label={t("labelNotifications")} tone="ghost" onPress={() => router.push('/notifications')} />
-              {unread > 0 ? <View style={{ position: 'absolute', top: 11, right: 11, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: colors.bg, backgroundColor: GOLD }} /> : null}
+              {unread > 0 ? <View style={{ position: 'absolute', top: 11, right: 11, width: 8, height: 8, borderRadius: radii.full, borderWidth: 1.5, borderColor: colors.bg, backgroundColor: GOLD }} /> : null}
             </View>
             {/* Scanner : seule porte d'entrée pour connecter une dApp ou la webapp par QR. */}
             <IconButton icon="scan" label={t("scanQr")} tone="ghost" onPress={() => router.push('/scan')} />
@@ -630,7 +645,7 @@ export default function Home() {
 
         {/* Sauvegarde sautée : bandeau permanent (§4.9) */}
         {!backupVerified && !watchOnly ? (
-          <KPressable onPress={() => router.push('/reveal-phrase')} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2], padding: space[3], borderRadius: 12, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.warning }}>
+          <KPressable onPress={() => router.push('/reveal-phrase')} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2], padding: space[3], borderRadius: radii.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.warning }}>
             <Icon name="warning" size={18} color={colors.warning} />
             <Text variant="caption" style={{ flex: 1 }}>{t("unverifiedBackupWarning")}</Text>
             <Icon name="chevron" size={14} tone="muted" />
@@ -668,9 +683,12 @@ export default function Home() {
             {scrub ? (
               <Text variant="caption" tone="secondary">{fmtDate(scrub.t, period, locale)}</Text>
             ) : hidden || initialLoading ? null : pf.pnl24h != null ? (
-              <Text variant="caption" tone={pnlUp ? 'up' : 'down'} tabular>
-                {pnlUp ? '↑ +' : '↓ −'}{formatFiat(Math.abs(pf.pnl24h))} {sym} · {t("today")}{pf.pnl24hPct != null ? ` (${pnlUp ? '+' : '−'}${Math.abs(pf.pnl24hPct).toFixed(1).replace('.', decimalSeparator())} %)` : ''}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Icon name={pnlUp ? 'trendUp' : 'trendDown'} size={14} color={pnlUp ? colors.up : colors.down} />
+                <Text variant="caption" tone={pnlUp ? 'up' : 'down'} tabular>
+                {pnlUp ? '+' : '−'}{formatFiat(Math.abs(pf.pnl24h))} {sym} · {t("today")}{pf.pnl24hPct != null ? ` (${pnlUp ? '+' : '−'}${Math.abs(pf.pnl24hPct).toFixed(1).replace('.', decimalSeparator())} %)` : ''}
+                </Text>
+              </View>
             ) : (
               <Text variant="caption" tone="tertiary">{pf.fromCache ? t("updating") : ' '}</Text>
             )}
@@ -707,7 +725,7 @@ export default function Home() {
           {tab === 'tokens' ? (
             <>
             {initialLoading ? (
-              <Surface padded={false} style={{ borderRadius: 26 }}>
+              <Card padded={false}>
                 {[0, 1, 2].map((i) => (
                   <View key={i} style={{ height: 64, flexDirection: 'row', alignItems: 'center', gap: space[3], paddingHorizontal: space[4] }}>
                     <Skeleton width={40} height={40} round />
@@ -715,18 +733,19 @@ export default function Home() {
                     <Skeleton width={72} />
                   </View>
                 ))}
-              </Surface>
+              </Card>
             ) : pf.holdings.length === 0 ? (
               <>
-              <Surface>
+              <Card>
                 <EmptyState icon="receive" title={t("emptyTokensTitle")} body={t("emptyTokensBody")} actionLabel={t("actionReceive")} onAction={() => router.push('/receive')} />
-                {pf.error ? <Text variant="caption" tone="warning" style={{ textAlign: 'center' }}>{pf.error}</Text> : null}
-              </Surface>
+                {/* Hors ligne → « réseau injoignable » ; sinon un échec de lecture (RPC, chaîne) : ne pas accuser le réseau. */}
+                {pf.error ? <Text variant="caption" tone="warning" style={{ textAlign: 'center' }}>{t(online ? 'balancesLoadFailed' : 'errNetworkOffline')}</Text> : null}
+              </Card>
               {testnetSection}
               </>
             ) : (
               <>
-                <Surface padded={false} style={{ borderRadius: 26 }}>
+                <Card padded={false}>
                   {/*
                     CASCADE À L'ARRIVÉE. `cascadeDelay` était défini dans
                     `ui/motion` et utilisé NULLE PART : les listes apparaissaient
@@ -755,7 +774,7 @@ export default function Home() {
                       {i < arr.length - 1 ? <Divider inset={68} /> : null}
                     </FadeInUp>
                   ))}
-                </Surface>
+                </Card>
                 {shownTokens.length > tokenLimit ? (
                   <KPressable onPress={() => setTokenLimit((n) => n + LIST_PAGE)} style={{ alignSelf: 'center', paddingVertical: space[2] }}>
                     <Text variant="caption" style={{ color: colors.primary }}>{fill(t('showMoreCount'), { count: String(shownTokens.length - tokenLimit) })}</Text>
@@ -772,7 +791,7 @@ export default function Home() {
                       <Text variant="caption" tone="tertiary">{showHidden ? t("hideUnverifiedTokens") : fill(t('showUnverifiedTokens'), { count: unverified.length.toString() })}</Text>
                     </KPressable>
                     {showHidden ? (
-                      <Surface padded={false} style={{ opacity: 0.75 }}>
+                      <Card padded={false} style={{ opacity: 0.75 }}>
                         {unverified.slice(0, unverifiedLimit).map((h, i) => (
                           <React.Fragment key={h.id}>
                             <KPressable noScale onPress={() => openHolding(h)}>
@@ -788,7 +807,7 @@ export default function Home() {
                             {i < Math.min(unverified.length, unverifiedLimit) - 1 ? <Divider inset={68} /> : null}
                           </React.Fragment>
                         ))}
-                      </Surface>
+                      </Card>
                     ) : null}
                     {showHidden && unverified.length > unverifiedLimit ? (
                       <KPressable onPress={() => setUnverifiedLimit((n) => n + LIST_PAGE)} style={{ alignSelf: 'center', paddingVertical: space[1] }}>
@@ -817,18 +836,18 @@ export default function Home() {
             {nfts === null ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[3] }}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} width={(screenW - SCREEN_MARGIN * 2 - space[3]) / 2} height={(screenW - SCREEN_MARGIN * 2 - space[3]) / 2} />)}</View>
             ) : nfts.length === 0 && nftIssues?.nothingAnswered ? (
-              <Surface><EmptyState icon="warning" title={t('nftLoadFailedTitle')} body={t('nftLoadFailedBody')} actionLabel={t('retry')} onAction={retryNfts} /></Surface>
+              <Card><EmptyState icon="warning" title={t('nftLoadFailedTitle')} body={t('nftLoadFailedBody')} actionLabel={t('retry')} onAction={retryNfts} /></Card>
             ) : nfts.length === 0 ? (
-              <Surface><EmptyState icon="nft" title={t("emptyNftTitle")} body={t("emptyNftBody")} actionLabel={t("actionReceive")} onAction={() => router.push('/receive')} /></Surface>
+              <Card><EmptyState icon="nft" title={t("emptyNftTitle")} body={t("emptyNftBody")} actionLabel={t("actionReceive")} onAction={() => router.push('/receive')} /></Card>
             ) : (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[3] }}>
                 {nfts.slice(0, nftLimit).map((n) => {
                   const w = (screenW - SCREEN_MARGIN * 2 - space[3]) / 2;
                   return (
                     <KPressable key={`${n.chainId}:${n.contract}:${n.tokenId}`} onPress={() => setOpenNft(n)} style={{ width: w, gap: space[1] }} accessibilityLabel={n.name}>
-                      <View style={{ width: w, height: w, borderRadius: 12, backgroundColor: colors.surface2, overflow: 'hidden' }}>
+                      <View style={{ width: w, height: w, borderRadius: radii.md, backgroundColor: colors.surface2, overflow: 'hidden' }}>
                         {n.image ? <Image source={{ uri: n.image }} style={{ width: w, height: w }} resizeMode="cover" /> : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Icon name="nft" size={28} tone="faint" /></View>}
-                        <View style={{ position: 'absolute', right: 6, bottom: 6, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        <View style={{ position: 'absolute', right: 6, bottom: 6, width: 18, height: 18, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                           {chainIconUrl(n.chainId) ? <LogoImage uri={chainIconUrl(n.chainId)!} size={12} /> : null}
                         </View>
                       </View>
@@ -860,18 +879,18 @@ export default function Home() {
             pu demander serait un mensonge sur le portefeuille de l'utilisateur.
           */
           recent.length === 0 && recentLoading ? (
-            <Surface padded={false} style={{ borderRadius: 26 }}>{[0, 1, 2].map((i) => <View key={i} style={{ height: 64, paddingHorizontal: space[4], justifyContent: 'center' }}><Skeleton width="70%" /></View>)}</Surface>
+            <Card padded={false}>{[0, 1, 2].map((i) => <View key={i} style={{ height: 64, paddingHorizontal: space[4], justifyContent: 'center' }}><Skeleton width="70%" /></View>)}</Card>
           ) : recent.length === 0 && !recentFetched ? (
-            <Surface>
+            <Card>
               <EmptyState icon="warning" title={t("activityUnavailableTitle")} body={t("activityUnavailableBody")} />
-            </Surface>
+            </Card>
           ) : recent.length === 0 ? (
-            <Surface>
+            <Card>
               <EmptyState icon="history" title={t("emptyActivityTitle")} body={t("emptyActivityBody")} />
-            </Surface>
+            </Card>
           ) : (
             <>
-              <Surface padded={false} style={{ borderRadius: 26 }}>
+              <Card padded={false}>
                 {recent.map((tx) => ({ tx, h: humanizeTx(tx, humanCtx) })).filter((r) => !r.h.spam).slice(0, 5).map((r, i, arr) => (
                   <FadeInUp key={`${r.tx.chain}:${r.tx.hash}`} delay={cascadeDelay(i)}>
                     <ActivityRow
@@ -887,7 +906,7 @@ export default function Home() {
                     {i < arr.length - 1 ? <Divider inset={68} /> : null}
                   </FadeInUp>
                 ))}
-              </Surface>
+              </Card>
               <KPressable onPress={() => router.push('/history')} style={{ alignSelf: 'center', paddingVertical: space[2] }}>
                 <Text variant="caption" tone="secondary">{t("fullHistory")}</Text>
               </KPressable>

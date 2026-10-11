@@ -1,12 +1,11 @@
-import { radius } from '../ui/tokens';
+import { radius, fontSize } from '../ui/tokens';
 import { isWalletError } from '../src';
 import { friendlyTxError } from '../lib/txError';
 import { Pressable as KPressable, Halo } from '../ui/kit';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, StyleSheet, useWindowDimensions } from 'react-native';
 import { Orbit, Rise, Stardust } from '../ui/nova';
 import { router, Stack } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PinPad } from '../ui/PinPad';
 import { Icon } from '../ui/icon';
@@ -18,7 +17,7 @@ import { flushPendingIntent } from '../lib/paymentIntent';
 import { isBiometricAvailable } from '../lib/biometrics';
 
 export default function Unlock() {
-  const { colors, gradients } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const t = useT();
@@ -45,9 +44,9 @@ export default function Unlock() {
    * désactivé après la fin de l'attente. Tic chaque seconde tant qu'il y a
    * une attente.
    */
-  const [now, setNow] = useState(() => Date.now());
-  // Même règle que le portefeuille (horloge du téléphone ET chronomètre interne) ; `now` fait seulement retourner le décompte.
-  const lockedMs = useMemo(() => pinLockRemainingMs(), [now, failedAttempts, lastFailedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [, setNow] = useState(() => Date.now());
+  // Même règle que le portefeuille (horloge du téléphone ET chronomètre interne) ; le tic de `setNow` fait seulement retourner le décompte.
+  const lockedMs = pinLockRemainingMs();
   const locked = lockedMs > 0;
   useEffect(() => {
     if (!locked) return;
@@ -101,7 +100,7 @@ export default function Unlock() {
         }
       }
     },
-    [unlockWithBiometrics, goHome],
+    [unlockWithBiometrics, goHome, t],
   );
 
   useEffect(() => {
@@ -132,7 +131,7 @@ export default function Unlock() {
         setBusy(false);
       }
     },
-    [unlockWithPin, setPinLength, goHome, biometricEnabled, healBiometric],
+    [unlockWithPin, setPinLength, goHome, biometricEnabled, healBiometric, t],
   );
 
   const onChange = (v: string) => {
@@ -168,8 +167,8 @@ export default function Unlock() {
       <View style={{ flex: 1, paddingTop: insets.top + spacing(3), paddingBottom: insets.bottom + spacing(2), paddingHorizontal: spacing(3), alignItems: 'center' }}>
         {/* En-tête compact : titre, sous-titre, biométrie */}
         <Rise style={{ alignItems: 'center', gap: spacing(1.25) }}>
-          <Text style={{ color: colors.text, fontSize: 22, fontFamily: fonts.bold, textAlign: 'center' }}>{title}</Text>
-          <Text style={{ color: error && !locked ? colors.danger : colors.textSecondary, fontSize: 14, textAlign: 'center' }}>{subtitle}</Text>
+          <Text style={{ color: colors.text, fontSize: fontSize.xxl, fontFamily: fonts.bold, textAlign: 'center' }}>{title}</Text>
+          <Text style={{ color: error && !locked ? colors.danger : colors.textSecondary, fontSize: fontSize.md, textAlign: 'center' }}>{subtitle}</Text>
           {/*
             Le retour d'appui était un changement d'OPACITÉ (0.6), ce que le
             §3.2 interdit explicitement : c'est le scale qui dit « touché ».
@@ -182,7 +181,7 @@ export default function Unlock() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing(0.5), paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.round, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border }}
             >
               <Icon name="security" size={18} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 13, fontFamily: fonts.semibold }}>{t('biometrics')}</Text>
+              <Text style={{ color: colors.primary, fontSize: fontSize.sm, fontFamily: fonts.semibold }}>{t('biometrics')}</Text>
             </KPressable>
           ) : null}
         </Rise>
@@ -205,7 +204,7 @@ export default function Unlock() {
           <View style={{ height: 24, justifyContent: 'center' }}>
             {complete ? (
               <KPressable onPress={() => submit(pin)} disabled={busy || locked} hitSlop={8} haptic="light" accessibilityLabel={t('unlockBtn')}>
-                <Text style={{ color: colors.primary, fontSize: 16, fontFamily: fonts.semibold }}>
+                <Text style={{ color: colors.primary, fontSize: fontSize.lg, fontFamily: fonts.semibold }}>
                   {busy ? t('verifying') : t('unlockBtn')}
                 </Text>
               </KPressable>

@@ -7,14 +7,14 @@
  * la répéter ici ferait deux alertes pour la même chose. Écartée d'un geste, elle revient au bout de sept jours :
  * un rappel, pas un harcèlement. Rien quand tout est fait.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Text, Pressable as KPressable } from './kit';
 import { IconDisc } from './nova';
 import { Icon, type IconName } from './icon';
-import { useTheme } from './theme';
+import { useTheme, radii } from './theme';
 import { fontFamily } from './tokens';
 import { useSettings, useT } from '../lib/settingsStore';
 import { isBiometricAvailable } from '../lib/biometrics';
@@ -57,14 +57,17 @@ export function HomeNudge() {
   ];
   const ids = all.map((n) => n.id).join(',');
 
+  /*
+   * Seuls les ids pas encore relus le sont : l'état déjà connu est GARDÉ (le
+   * remettre à zéro quand la biométrie se révélait disponible faisait
+   * disparaître puis réapparaître la carte — l'accueil sautait).
+   */
+  const readUnknownSnoozes = useEffectEvent(() =>
+    Promise.all(all.filter((n) => snoozed[n.id] === undefined).map(async (n) => [n.id, Number(await AsyncStorage.getItem(key(n.id)).catch(() => null)) || 0] as const)),
+  );
   useEffect(() => {
     let alive = true;
-    /*
-     * Seuls les ids pas encore relus le sont : l'état déjà connu est GARDÉ (le
-     * remettre à zéro quand la biométrie se révélait disponible faisait
-     * disparaître puis réapparaître la carte — l'accueil sautait).
-     */
-    Promise.all(all.filter((n) => snoozed[n.id] === undefined).map(async (n) => [n.id, Number(await AsyncStorage.getItem(key(n.id)).catch(() => null)) || 0] as const)).then((rows) => {
+    readUnknownSnoozes().then((rows) => {
       if (!alive) return;
       const now = Date.now();
       if (rows.length) setSnoozed((s) => ({ ...s, ...Object.fromEntries(rows.map(([id, at]) => [id, now - at < SNOOZE_MS])) }));
@@ -72,7 +75,6 @@ export function HomeNudge() {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
 
   // La première carte non écartée ; si une carte plus prioritaire n'est pas encore relue, on attend.
@@ -83,12 +85,12 @@ export function HomeNudge() {
     setSnoozed((s) => ({ ...s, [n.id]: true }));
   };
   return (
-    <View style={{ flexDirection: 'row', gap: 12, padding: 14, borderRadius: 22, backgroundColor: colors.surface1, borderWidth: 1, borderColor: 'rgba(255,181,71,0.28)' }}>
+    <View style={{ flexDirection: 'row', gap: 12, padding: 14, borderRadius: radii.xl, backgroundColor: colors.surface1, borderWidth: 1, borderColor: 'rgba(255,181,71,0.28)' }}>
       <IconDisc name={n.icon} tone="gold" size={40} />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text variant="body" style={{ fontFamily: fontFamily.semibold }}>{n.title}</Text>
         <Text variant="caption" tone="secondary">{n.body}</Text>
-        <KPressable onPress={n.go} haptic="light" hitSlop={8} accessibilityRole="button" accessibilityLabel={n.cta} style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 14, height: 32, borderRadius: 16, justifyContent: 'center', backgroundColor: colors.primary }}>
+        <KPressable onPress={n.go} haptic="light" hitSlop={8} accessibilityRole="button" accessibilityLabel={n.cta} style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 14, height: 32, borderRadius: radii.full, justifyContent: 'center', backgroundColor: colors.primary }}>
           <Text variant="caption" style={{ color: colors.onPrimary, fontFamily: fontFamily.semibold }}>{n.cta}</Text>
         </KPressable>
       </View>

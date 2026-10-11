@@ -15,16 +15,17 @@
  * coché fait trembler la case : on montre ce qui manque au lieu d'offrir un
  * écran mort au tout premier contact.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming, useReducedMotion } from 'react-native-reanimated';
+import { useLoopActive } from '../ui/useLoopActive';
+import Animated, { Easing, cancelAnimation, withSequence, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming, useReducedMotion } from 'react-native-reanimated';
 import { Text, Button, Halo, Pressable, Checkbox, Pressable as KPressable } from '../ui/kit';
 import { KalyxLogoIgnite } from '../ui/KalyxLogo';
 import { Icon, type IconName } from '../ui/icon';
 import { useTheme } from '../ui/theme';
-import { space, SCREEN_MARGIN, springs, radius, BRAND_GOLD } from '../ui/tokens';
+import { space, SCREEN_MARGIN, radius, BRAND_GOLD, fontSize, radii } from '../ui/tokens';
 import { useWallet } from '../lib/walletStore';
 import { useT } from '../lib/settingsStore';
 import { haptic } from '../lib/haptics';
@@ -58,11 +59,17 @@ const STAGGER = 95;
 function Mote({ x, y, size, period, reduced, delay }: { x: number; y: number; size: number; period: number; reduced: boolean; delay: number }) {
   const v = useSharedValue(0);
   const inV = useSharedValue(reduced ? 1 : 0);
+  const active = useLoopActive();
   useEffect(() => {
     inV.value = withDelay(delay, withTiming(1, { duration: 600 }));
+  }, [inV, delay]);
+  useEffect(() => {
     if (reduced) return;
-    v.value = withRepeat(withTiming(1, { duration: period, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, [v, inV, period, reduced, delay]);
+    if (!active) { cancelAnimation(v); return; }
+    const loop = withRepeat(withTiming(1, { duration: period, easing: Easing.inOut(Easing.sin) }), -1, true);
+    v.value = v.value === 0 ? loop : withSequence(withTiming(0, { duration: 400 }), loop);
+    return () => cancelAnimation(v);
+  }, [v, period, reduced, active]);
   const style = useAnimatedStyle(() => ({
     opacity: inV.value * (0.22 + v.value * 0.28),
     transform: [{ translateX: x + v.value * 10 }, { translateY: y - v.value * 16 }, { scale: 0.85 + v.value * 0.3 }],
@@ -208,13 +215,13 @@ export default function Welcome() {
             <KalyxLogoIgnite size={84} reduced={reduced} delay={IGNITE.delay} stagger={IGNITE.stagger} alive />
           </Animated.View>
           <Animated.View style={[{ alignItems: 'center', width: '100%', marginTop: space[4] }, nameStyle]}>
-            <Text variant="title1" style={{ fontSize: 34, lineHeight: 40, letterSpacing: 1.5 }}>Kalyx</Text>
+            <Text variant="title1" style={{ fontSize: fontSize.h1, lineHeight: 40, letterSpacing: 1.5 }}>Kalyx</Text>
           </Animated.View>
           <Animated.View style={[{ alignItems: 'center', width: '100%' }, taglineStyle]}>
             <Text
               variant="bodySecondary"
               tone="secondary"
-              style={{ marginTop: space[2], textAlign: 'center', maxWidth: 300, fontSize: 15, lineHeight: 22 }}
+              style={{ marginTop: space[2], textAlign: 'center', maxWidth: 300, fontSize: fontSize.base, lineHeight: 22 }}
             >
               {t('tagline')}
             </Text>
@@ -233,7 +240,7 @@ export default function Welcome() {
           figée, au premier affichage uniquement — jamais au re-rendu.
         */}
         {showProps ? (
-          <View style={{ gap: space[3], marginBottom: space[4], padding: space[3], borderRadius: 24, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border }}>
+          <View style={{ gap: space[3], marginBottom: space[4], padding: space[3], borderRadius: radii.xl, backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border }}>
             {PROPS.map((p, i) => (
               <Argument key={p.title} {...p} delay={BEAT.props + i * STAGGER} reduced={reduced} />
             ))}
