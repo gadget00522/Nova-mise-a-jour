@@ -832,7 +832,7 @@ Si vous souhaitez soutenir le développement de Kalyx Wallet :
 
 **BTC**
 ```
-bc1qwdqesyfzja4585f09ylvp4rc2lyqhvmvlvytx4
+bc1qkalyxyueng23j7elpqrk4pcp3thp94u6cs5rkn
 ```
 
 Les contributions peuvent aider à financer :
@@ -869,6 +869,21 @@ N'utilisez pas Kalyx Wallet avec des montants que vous ne pouvez pas vous permet
 Les RPC, explorers, APIs de marché, WalletConnect, LI.FI et autres services tiers peuvent avoir leurs propres limitations, indisponibilités ou risques.
 
 ---
+
+Ne transmettez **jamais** une phrase de récupération, une clé privée, un PIN, un mot de passe ou un jeton. Kalyx ne vous les demandera jamais.
+
+## 💙 Soutenir le projet
+
+Depuis l'app : **Menu → Soutenez-nous** (un appui ouvre l'écran Envoyer pré-rempli). Kalyx est gratuit à l'usage ; une commission de 0,3 % s'applique aux échanges intégrés.
+
+| Réseau | Adresse |
+|---|---|
+| **BTC** | `bc1qkalyxyueng23j7elpqrk4pcp3thp94u6cs5rkn` |
+| **ETH / EVM** (Base, Arbitrum, Ethereum…) | `0x7411b6a0b4df0f3a0bab9fe2c5d5cb47ddbdb69b` |
+| **SOL** | `KALYXiXBdhzuEyFuPx9EdoqyaiUcrBTT9k66v4C13jz` |
+| **TON** | `kalyxwallet.ton` — `UQBapKtQghRx5Wh1WpscDbNNH9kLIpdd89rSxMU5EJCmVBrU` |
+
+Source unique de ces adresses : [`src/constants/donations.ts`](src/constants/donations.ts) (testée).
 
 # 📄 Licence
 
