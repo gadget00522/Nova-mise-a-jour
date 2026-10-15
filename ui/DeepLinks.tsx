@@ -26,6 +26,9 @@
  * de `bitcoin:` / `solana:` (intent-filters) prend effet au prochain rebuild.
  */
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
+import { dappHost } from '../src/domain/web/dappHost';
+import { catalogEntry, lookalikeOf } from '../src/domain/web/dappCatalog';
 import * as Linking from 'expo-linking';
 import { looksLikeTonConnect } from '../src/domain/tonconnect/connectLink';
 import { toast } from '../lib/toast';
@@ -57,6 +60,41 @@ function whenWalletReady(fn: () => void): void {
     unsub();
     fn();
   });
+}
+
+/**
+ * Lien de lancement déjà traité. `getInitialURL()` rend le MÊME lien tant que
+ * l'app vit : si ce composant est recréé, le lien rejoué relançait l'action
+ * (connexion WalletConnect proposée à nouveau, paiement rouvert…).
+ */
+let initialHandled = false;
+
+/**
+ * SITE OUVERT PAR UN LIEN EXTÉRIEUR : confirmé d'abord. Un lien reçu par
+ * message (`kalyx://browse?url=…`) ouvrait directement la page DANS le
+ * navigateur du portefeuille — un sosie (« uniswapp.org ») s'y présentait
+ * avec la confiance de l'app. Le vrai domaine est montré, et un nom qui
+ * ressemble à un site connu est signalé. Les sites du catalogue vérifié
+ * passent sans question.
+ */
+function confirmExternalSite(url: string, open: () => void): void {
+  const host = dappHost(url);
+  if (!host) return;
+  if (catalogEntry(host)) {
+    open();
+    return;
+  }
+  const lang = useSettings.getState().language;
+  const tr = (k: Parameters<typeof translate>[1]) => translate(lang, k);
+  const like = lookalikeOf(host);
+  Alert.alert(
+    tr('linkSiteTitle'),
+    `${host}\n\n${like ? translate(lang, 'linkSiteLookalike').replace('{site}', like) : tr('linkSiteBody')}`,
+    [
+      { text: tr('cancel'), style: 'cancel' },
+      { text: tr('open'), style: like ? 'destructive' : 'default', onPress: open },
+    ],
+  );
 }
 
 export function DeepLinks() {
@@ -188,10 +226,13 @@ export function DeepLinks() {
       if (/(^|\/\/)browse\b/i.test(url)) {
         const target = extractBrowseUrl(url);
         // Par `act` : app verrouillée → mise en attente jusqu'au code (la page ne se charge pas derrière l'écran de verrouillage).
-        if (target) act({ kind: 'url', url: target });
+        if (target) confirmExternalSite(target, () => act({ kind: 'url', url: target }));
       }
     };
-    Linking.getInitialURL().then((u) => handle(u, true));
+    if (!initialHandled) {
+      initialHandled = true;
+      Linking.getInitialURL().then((u) => handle(u, true));
+    }
     const sub = Linking.addEventListener('url', (e) => handle(e.url));
     return () => sub.remove();
   }, []);
